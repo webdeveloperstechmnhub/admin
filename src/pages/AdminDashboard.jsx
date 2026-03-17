@@ -587,7 +587,7 @@ export default function AdminDashboard({ onLogout }) {
         filterCategory === "all" || user.category === filterCategory;
       const matchesEvent =
         filterEvent === "all" ||
-        (user.eventShortName || "Zonex 2026") === filterEvent;
+        (user.eventShortName || "") === filterEvent;
 
       return matchesSearch && matchesStatus && matchesCategory && matchesEvent;
     });
@@ -657,7 +657,7 @@ export default function AdminDashboard({ onLogout }) {
       u.fullName || "",
       u.email || "",
       u.mobile || "",
-      u.eventShortName || "Zonex 2026",
+      u.eventShortName || "",
       u.college || "",
       u.courseYear || "",
       u.city || "",
@@ -702,7 +702,7 @@ export default function AdminDashboard({ onLogout }) {
   }, [users]);
 
   const eventOptions = useMemo(() => {
-    const userEvents = users.map((u) => u.eventShortName || "Zonex 2026");
+    const userEvents = users.map((u) => u.eventShortName || "").filter(Boolean);
     const createdEvents = events.map((e) => e.shortName).filter(Boolean);
     return [...new Set([...userEvents, ...createdEvents])];
   }, [users, events]);
@@ -764,7 +764,7 @@ export default function AdminDashboard({ onLogout }) {
         <div className="sidebar-header">
           <div className="logo">
             <Award size={32} />
-            <span>Zonex 2026</span>
+            <span>TechMNHub</span>
           </div>
         </div>
 
@@ -919,7 +919,7 @@ export default function AdminDashboard({ onLogout }) {
                     checkedInUsers.map((user) => (
                       <tr key={user._id}>
                         <td>{user.fullName}</td>
-                        <td>{user.eventShortName || "Zonex 2026"}</td>
+                        <td>{user.eventShortName || "—"}</td>
                         <td>{user.registrationId || "N/A"}</td>
                         <td>
                           {user.checkInTime
@@ -965,7 +965,7 @@ export default function AdminDashboard({ onLogout }) {
                 name="shortName"
                 value={eventForm.shortName}
                 onChange={handleEventInput}
-                placeholder="Short event name (e.g., Zonex 2026)"
+                placeholder="Short event name (e.g., TechFront 2026)"
                 required
               />
               <input
@@ -1359,7 +1359,7 @@ export default function AdminDashboard({ onLogout }) {
                         </div>
                       </td>
                       <td>
-                        <span className="category">{user.eventShortName || "Zonex 2026"}</span>
+                        <span className="category">{user.eventShortName || "—"}</span>
                       </td>
                       <td>
                         <div className="category-info">

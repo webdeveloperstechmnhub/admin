@@ -39,7 +39,7 @@ export default function AdminLogin({ onLogin }) {
         <div className="login-header">
           <div className="brand-badge">TechMNHub</div>
           <h2>Admin Portal</h2>
-          <p>Sign in to manage Zonex 2026</p>
+          <p>Sign in to manage TechMNHub</p>
         </div>
 
         <form onSubmit={handleSubmit} className="login-form">
