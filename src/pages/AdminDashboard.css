@@ -359,6 +359,69 @@
 .stat-icon.purple { background: rgba(139, 92, 246, 0.1); color: var(--purple); }
 .stat-icon.yellow { background: rgba(245, 158, 11, 0.1); color: var(--warning); }
 
+/* Employee Management */
+.employees-section .employee-form-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.employee-filters-bar {
+  margin-top: 18px;
+}
+
+.employee-description-cell {
+  max-width: 260px;
+  white-space: normal;
+}
+
+.employee-modal {
+  width: min(920px, calc(100vw - 32px));
+}
+
+.employee-modal-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(260px, 0.9fr);
+  gap: 20px;
+}
+
+.employee-qr-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.employee-qr-preview {
+  display: grid;
+  place-items: center;
+  margin-top: 12px;
+  padding: 18px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.employee-qr-preview img {
+  width: 220px;
+  height: 220px;
+  border-radius: 12px;
+  background: white;
+}
+
+.employee-qr-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 900px) {
+  .employee-modal-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .employee-description-cell {
+    max-width: none;
+  }
+}
+
 /* Participants Section */
 .participants-section {
   background: rgba(255, 255, 255, 0.02);

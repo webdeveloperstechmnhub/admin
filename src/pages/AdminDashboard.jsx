@@ -26,7 +26,7 @@ import {
 import "./AdminDashboard.css";
 
 const ADMIN_ACTIVE_PAGE_KEY = "adminActivePage";
-const VALID_PAGES = new Set(["dashboard", "events", "participants", "analytics"]);
+const VALID_PAGES = new Set(["dashboard", "events", "employees", "participants", "analytics"]);
 
 const extractNumber = (value, fallback = 0) => {
   const num = Number(value);
@@ -178,6 +178,47 @@ const buildEventPayload = (eventForm) => {
   };
 };
 
+const createEmptyEmployeeForm = () => ({
+  name: "",
+  empId: "",
+  designation: "",
+  department: "",
+  description: "",
+});
+
+const mapEmployeeToForm = (employee) => ({
+  name: employee.name || "",
+  empId: employee.empId || "",
+  designation: employee.designation || "",
+  department: employee.department || "",
+  description: employee.description || "",
+});
+
+const buildEmployeeQrPayload = (employee) => {
+  const empId = String(employee?.empId || "").trim();
+  if (!empId) return "";
+
+  const verifyPage = String(import.meta.env.VITE_EMPLOYEE_VERIFY_URL || "").trim();
+  if (!verifyPage) {
+    return empId;
+  }
+
+  try {
+    const verifyUrl = new URL(verifyPage);
+    verifyUrl.searchParams.set("empId", empId);
+    verifyUrl.searchParams.set("registrationId", empId);
+    return verifyUrl.toString();
+  } catch (error) {
+    return empId;
+  }
+};
+
+const buildEmployeeQrUrl = (employee) => {
+  const payload = buildEmployeeQrPayload(employee);
+  if (!payload) return "";
+  return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(payload)}`;
+};
+
 export default function AdminDashboard({ onLogout }) {
   // States
   const [activePage, setActivePage] = useState(() => {
@@ -198,6 +239,14 @@ export default function AdminDashboard({ onLogout }) {
   const [eventsLoading, setEventsLoading] = useState(false);
   const [eventSubmitting, setEventSubmitting] = useState(false);
   const [editingEventId, setEditingEventId] = useState(null);
+  const [employees, setEmployees] = useState([]);
+  const [employeesLoading, setEmployeesLoading] = useState(false);
+  const [employeeSubmitting, setEmployeeSubmitting] = useState(false);
+  const [editingEmployeeId, setEditingEmployeeId] = useState(null);
+  const [employeeForm, setEmployeeForm] = useState(createEmptyEmployeeForm());
+  const [employeeSearch, setEmployeeSearch] = useState("");
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [showEmployeeModal, setShowEmployeeModal] = useState(false);
   const [showEntriesModal, setShowEntriesModal] = useState(false);
   const [entriesLoading, setEntriesLoading] = useState(false);
   const [selectedEventForEntries, setSelectedEventForEntries] = useState(null);
@@ -211,6 +260,7 @@ export default function AdminDashboard({ onLogout }) {
     fetchData();
     fetchStats();
     fetchEvents();
+    fetchEmployees();
   }, []);
 
   useEffect(() => {
@@ -239,6 +289,36 @@ export default function AdminDashboard({ onLogout }) {
     });
   };
 
+  const parseResponseData = async (res) => {
+    const contentType = String(res.headers.get("content-type") || "").toLowerCase();
+
+    if (contentType.includes("application/json")) {
+      try {
+        return await res.json();
+      } catch (error) {
+        return {};
+      }
+    }
+
+    const text = await res.text().catch(() => "");
+    if (text && !text.trim().startsWith("<!DOCTYPE")) {
+      return { msg: text };
+    }
+
+    return { msg: "API returned an invalid response. Verify backend URL and routes." };
+  };
+
+  const handleUnauthorizedResponse = (res, fallbackMsg) => {
+    if (res.status !== 401) {
+      return false;
+    }
+
+    localStorage.removeItem("adminToken");
+    showNotice("error", fallbackMsg || "Session expired. Please sign in again.");
+    onLogout(false);
+    return true;
+  };
+
   const resetParticipantFilters = () => {
     setSearchTerm("");
     setFilterStatus("all");
@@ -253,7 +333,8 @@ export default function AdminDashboard({ onLogout }) {
       const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/users`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = await res.json();
+      const data = await parseResponseData(res);
+      if (handleUnauthorizedResponse(res)) return;
       if (res.ok) {
         setUsers(data);
       } else {
@@ -273,7 +354,8 @@ export default function AdminDashboard({ onLogout }) {
       const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/stats`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = await res.json();
+      const data = await parseResponseData(res);
+      if (handleUnauthorizedResponse(res)) return;
       if (res.ok) {
         setStats(data);
       } else {
@@ -293,7 +375,8 @@ export default function AdminDashboard({ onLogout }) {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      const data = await res.json();
+      const data = await parseResponseData(res);
+      if (handleUnauthorizedResponse(res)) return;
       if (res.ok) {
         setEvents(data);
       } else {
@@ -304,6 +387,29 @@ export default function AdminDashboard({ onLogout }) {
       showNotice("error", "Failed to load events.");
     } finally {
       setEventsLoading(false);
+    }
+  };
+
+  const fetchEmployees = async () => {
+    try {
+      setEmployeesLoading(true);
+      const token = localStorage.getItem("adminToken");
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/employees`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const data = await parseResponseData(res);
+      if (handleUnauthorizedResponse(res)) return;
+      if (res.ok) {
+        setEmployees(data);
+      } else {
+        showNotice("error", data.msg || "Failed to load employees.");
+      }
+    } catch (err) {
+      console.error(err);
+      showNotice("error", "Failed to load employees.");
+    } finally {
+      setEmployeesLoading(false);
     }
   };
 
@@ -346,6 +452,100 @@ export default function AdminDashboard({ onLogout }) {
   const resetEventForm = () => {
     setEditingEventId(null);
     setEventForm(createEmptyEventForm());
+  };
+
+  const resetEmployeeForm = () => {
+    setEditingEmployeeId(null);
+    setEmployeeForm(createEmptyEmployeeForm());
+  };
+
+  const handleEmployeeInput = (e) => {
+    const { name, value } = e.target;
+    setEmployeeForm((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const handleEditEmployee = (employee) => {
+    setEditingEmployeeId(employee.empId);
+    setEmployeeForm(mapEmployeeToForm(employee));
+    setActivePage("employees");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleSaveEmployee = async (e) => {
+    e.preventDefault();
+
+    if (!employeeForm.empId.trim() || !employeeForm.name.trim()) {
+      showNotice("warning", "Employee ID and name are required.");
+      return;
+    }
+
+    try {
+      setEmployeeSubmitting(true);
+      const token = localStorage.getItem("adminToken");
+      const isEdit = Boolean(editingEmployeeId);
+      const endpoint = isEdit
+        ? `${import.meta.env.VITE_API_URL}/admin/employees/${encodeURIComponent(editingEmployeeId)}`
+        : `${import.meta.env.VITE_API_URL}/admin/employees`;
+
+      const res = await fetch(endpoint, {
+        method: isEdit ? "PUT" : "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(employeeForm),
+      });
+
+      const data = await parseResponseData(res);
+      if (handleUnauthorizedResponse(res)) return;
+      if (!res.ok) {
+        showNotice("error", data.msg || `Failed to ${isEdit ? "update" : "create"} employee.`);
+        return;
+      }
+
+      await fetchEmployees();
+      resetEmployeeForm();
+      showNotice("success", isEdit ? "Employee updated successfully." : "Employee created successfully.");
+    } catch (err) {
+      console.error(err);
+      showNotice("error", `Failed to ${editingEmployeeId ? "update" : "create"} employee.`);
+    } finally {
+      setEmployeeSubmitting(false);
+    }
+  };
+
+  const handleDeleteEmployee = async (employee) => {
+    if (!confirm(`Delete employee ${employee.name || employee.empId}?`)) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("adminToken");
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/employees/${encodeURIComponent(employee.empId)}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const data = await parseResponseData(res);
+      if (handleUnauthorizedResponse(res)) return;
+      if (!res.ok) {
+        showNotice("error", data.msg || "Failed to delete employee.");
+        return;
+      }
+
+      if (editingEmployeeId === employee.empId) {
+        resetEmployeeForm();
+      }
+
+      await fetchEmployees();
+      showNotice("success", "Employee deleted successfully.");
+    } catch (err) {
+      console.error(err);
+      showNotice("error", "Failed to delete employee.");
+    }
   };
 
   const handleEditEvent = (event) => {
@@ -391,7 +591,8 @@ export default function AdminDashboard({ onLogout }) {
       },
       );
 
-      const data = await res.json();
+      const data = await parseResponseData(res);
+      if (handleUnauthorizedResponse(res)) return;
       if (!res.ok) {
         showNotice("error", data.msg || `Failed to ${actionLabel} event.`);
         return;
@@ -420,7 +621,8 @@ export default function AdminDashboard({ onLogout }) {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      const data = await res.json();
+      const data = await parseResponseData(res);
+      if (handleUnauthorizedResponse(res)) return;
       if (!res.ok) {
         showNotice("error", data.msg || "Failed to delete event.");
         return;
@@ -450,7 +652,8 @@ export default function AdminDashboard({ onLogout }) {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      const data = await res.json();
+      const data = await parseResponseData(res);
+      if (handleUnauthorizedResponse(res)) return;
       if (!res.ok) {
         showNotice("error", data.msg || "Failed to load entries.");
         setShowEntriesModal(false);
@@ -478,7 +681,8 @@ export default function AdminDashboard({ onLogout }) {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      const data = await res.json();
+      const data = await parseResponseData(res);
+      if (handleUnauthorizedResponse(res)) return;
       if (!res.ok) {
         showNotice("error", data.msg || "Failed to close event.");
         return;
@@ -500,7 +704,8 @@ export default function AdminDashboard({ onLogout }) {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      const data = await res.json();
+      const data = await parseResponseData(res);
+      if (handleUnauthorizedResponse(res)) return;
       if (!res.ok) {
         showNotice("error", data.msg || "Failed to reopen event.");
         return;
@@ -525,7 +730,8 @@ export default function AdminDashboard({ onLogout }) {
           headers: { Authorization: `Bearer ${token}` },
         },
       );
-      const data = await res.json();
+      const data = await parseResponseData(res);
+      if (handleUnauthorizedResponse(res)) return;
       if (res.ok) {
         await fetchData();
         await fetchStats();
@@ -551,7 +757,8 @@ export default function AdminDashboard({ onLogout }) {
           headers: { Authorization: `Bearer ${token}` },
         },
       );
-      const data = await res.json();
+      const data = await parseResponseData(res);
+      if (handleUnauthorizedResponse(res)) return;
       if (res.ok) {
         await fetchData();
         await fetchStats();
@@ -707,6 +914,20 @@ export default function AdminDashboard({ onLogout }) {
     return [...new Set([...userEvents, ...createdEvents])];
   }, [users, events]);
 
+  const filteredEmployees = useMemo(() => {
+    const term = employeeSearch.trim().toLowerCase();
+
+    if (!term) {
+      return employees;
+    }
+
+    return employees.filter((employee) => {
+      return [employee.name, employee.empId, employee.designation, employee.department, employee.description]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(term));
+    });
+  }, [employees, employeeSearch]);
+
   const checkedInUsers = useMemo(() => {
     return users
       .filter((u) => u.checkedIn)
@@ -787,6 +1008,14 @@ export default function AdminDashboard({ onLogout }) {
           </button>
           <button
             type="button"
+            onClick={() => setActivePage("employees")}
+            className={`nav-item ${activePage === "employees" ? "active" : ""}`}
+          >
+            <UserCheck size={20} />
+            <span>Employee Management</span>
+          </button>
+          <button
+            type="button"
             onClick={() => setActivePage("participants")}
             className={`nav-item ${activePage === "participants" ? "active" : ""}`}
           >
@@ -817,6 +1046,7 @@ export default function AdminDashboard({ onLogout }) {
           <h1>
             {activePage === "dashboard" && "Admin Dashboard"}
             {activePage === "events" && "Events"}
+            {activePage === "employees" && "Employee Management"}
             {activePage === "participants" && "Participants"}
             {activePage === "analytics" && "Analytics"}
           </h1>
@@ -825,6 +1055,8 @@ export default function AdminDashboard({ onLogout }) {
               onClick={() => {
                 if (activePage === "events") {
                   fetchEvents();
+                } else if (activePage === "employees") {
+                  fetchEmployees();
                 } else {
                   fetchData();
                   fetchStats();
@@ -1250,6 +1482,167 @@ export default function AdminDashboard({ onLogout }) {
         </section>
         )}
 
+        {activePage === "employees" && (
+          <section className="participants-section employees-section">
+            <div className="section-header">
+              <h2>Employee Management</h2>
+              <span className="total-badge">{filteredEmployees.length} employees</span>
+            </div>
+
+            <form className="event-form employee-form" onSubmit={handleSaveEmployee}>
+              <h3 className="event-form-title">
+                {editingEmployeeId ? "Update Employee" : "Create Employee"}
+              </h3>
+              <div className="event-form-grid employee-form-grid">
+                <input
+                  name="empId"
+                  value={employeeForm.empId}
+                  onChange={handleEmployeeInput}
+                  placeholder="Employee ID"
+                  required
+                  readOnly={Boolean(editingEmployeeId)}
+                />
+                <input
+                  name="name"
+                  value={employeeForm.name}
+                  onChange={handleEmployeeInput}
+                  placeholder="Employee name"
+                  required
+                />
+                <input
+                  name="designation"
+                  value={employeeForm.designation}
+                  onChange={handleEmployeeInput}
+                  placeholder="Designation"
+                />
+                <input
+                  name="department"
+                  value={employeeForm.department}
+                  onChange={handleEmployeeInput}
+                  placeholder="Department"
+                />
+              </div>
+              <textarea
+                name="description"
+                value={employeeForm.description}
+                onChange={handleEmployeeInput}
+                placeholder="Employee description"
+                rows={3}
+              />
+              <div className="event-form-actions">
+                <button type="submit" className="export-btn" disabled={employeeSubmitting}>
+                  {employeeSubmitting
+                    ? editingEmployeeId
+                      ? "Updating..."
+                      : "Creating..."
+                    : editingEmployeeId
+                      ? "Update Employee"
+                      : "Create Employee"}
+                </button>
+                {editingEmployeeId && (
+                  <button type="button" className="export-btn" onClick={resetEmployeeForm}>
+                    Cancel Edit
+                  </button>
+                )}
+                <button type="button" className="icon-btn" onClick={fetchEmployees}>
+                  <RefreshCw size={18} />
+                </button>
+              </div>
+            </form>
+
+            <div className="filters-bar employee-filters-bar">
+              <div className="search-box">
+                <Search size={18} />
+                <input
+                  type="text"
+                  placeholder="Search by name, ID, designation, department, description..."
+                  value={employeeSearch}
+                  onChange={(e) => setEmployeeSearch(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {employeesLoading ? (
+              <p>Loading employees...</p>
+            ) : (
+              <div className="table-container">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Employee ID</th>
+                      <th>Name</th>
+                      <th>Designation</th>
+                      <th>Department</th>
+                      <th>Description</th>
+                      <th>Updated</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredEmployees.length === 0 ? (
+                      <tr>
+                        <td colSpan="7" className="no-data">
+                          No employees found.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredEmployees.map((employee) => (
+                        <tr key={employee._id}>
+                          <td>
+                            <span className="id-badge">{employee.empId}</span>
+                          </td>
+                          <td>
+                            <div className="user-info">
+                              <span className="user-name">{employee.name}</span>
+                            </div>
+                          </td>
+                          <td>{employee.designation || "N/A"}</td>
+                          <td>{employee.department || "N/A"}</td>
+                          <td className="employee-description-cell">{employee.description || "N/A"}</td>
+                          <td>
+                            {employee.updatedAt ? new Date(employee.updatedAt).toLocaleString() : "N/A"}
+                          </td>
+                          <td>
+                            <div className="action-buttons">
+                              <button
+                                onClick={() => {
+                                  setSelectedEmployee(employee);
+                                  setShowEmployeeModal(true);
+                                }}
+                                className="action-btn view"
+                                title="View QR"
+                                type="button"
+                              >
+                                <Eye size={16} />
+                              </button>
+                              <button
+                                onClick={() => handleEditEmployee(employee)}
+                                className="action-btn view"
+                                title="Edit Employee"
+                                type="button"
+                              >
+                                <Edit size={16} />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteEmployee(employee)}
+                                className="action-btn delete"
+                                title="Delete Employee"
+                                type="button"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        )}
+
         {/* Participants Section */}
         {activePage === "participants" && (
         <section className="participants-section">
@@ -1466,6 +1859,70 @@ export default function AdminDashboard({ onLogout }) {
           </section>
         )}
       </main>
+
+      {showEmployeeModal && selectedEmployee && (
+        <div className="modal-overlay" onClick={() => setShowEmployeeModal(false)}>
+          <div className="modal-content employee-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Employee QR</h3>
+              <button
+                onClick={() => setShowEmployeeModal(false)}
+                className="close-btn"
+              >
+                <XCircle size={20} />
+              </button>
+            </div>
+
+            <div className="employee-modal-grid">
+              <div className="detail-section">
+                <h4>Employee Details</h4>
+                <div className="detail-row">
+                  <span>Employee ID:</span>
+                  <strong className="reg-highlight">{selectedEmployee.empId}</strong>
+                </div>
+                <div className="detail-row">
+                  <span>Name:</span>
+                  <span>{selectedEmployee.name || "N/A"}</span>
+                </div>
+                <div className="detail-row">
+                  <span>Designation:</span>
+                  <span>{selectedEmployee.designation || "N/A"}</span>
+                </div>
+                <div className="detail-row">
+                  <span>Department:</span>
+                  <span>{selectedEmployee.department || "N/A"}</span>
+                </div>
+                <div className="detail-row">
+                  <span>Description:</span>
+                  <span>{selectedEmployee.description || "N/A"}</span>
+                </div>
+              </div>
+
+              <div className="detail-section employee-qr-section">
+                <h4>QR Code</h4>
+                <p className="event-description">
+                  Scan this QR to verify employee identity. It opens the verification page when VITE_EMPLOYEE_VERIFY_URL is configured, otherwise it carries the Employee ID.
+                </p>
+                <div className="employee-qr-preview">
+                  <img
+                    src={buildEmployeeQrUrl(selectedEmployee)}
+                    alt={`${selectedEmployee.name || selectedEmployee.empId} QR code`}
+                  />
+                </div>
+                <div className="employee-qr-actions">
+                  <button
+                    type="button"
+                    className="export-btn"
+                    onClick={() => navigator.clipboard?.writeText(selectedEmployee.empId)}
+                  >
+                    Copy Employee ID
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showEntriesModal && (
         <div className="modal-overlay" onClick={() => setShowEntriesModal(false)}>
