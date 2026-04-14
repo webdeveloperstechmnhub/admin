@@ -228,6 +228,8 @@ const buildEmployeeQrUrl = (employee) => {
   return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(payload)}`;
 };
 
+const getEmployeePhoto = (employee) => String(employee?.photoUrl || "").trim();
+
 const inferDbNameFromUri = (uri) => {
   try {
     const parsed = new URL(uri);
@@ -1991,6 +1993,7 @@ export default function AdminDashboard({ onLogout }) {
                 <table className="data-table">
                   <thead>
                     <tr>
+                      <th>Photo</th>
                       <th>Employee ID</th>
                       <th>Name</th>
                       <th>Designation</th>
@@ -2003,13 +2006,34 @@ export default function AdminDashboard({ onLogout }) {
                   <tbody>
                     {filteredEmployees.length === 0 ? (
                       <tr>
-                        <td colSpan="7" className="no-data">
+                        <td colSpan="8" className="no-data">
                           No employees found.
                         </td>
                       </tr>
                     ) : (
                       filteredEmployees.map((employee) => (
                         <tr key={employee._id}>
+                          <td>
+                            <div className="employee-table-avatar">
+                              {getEmployeePhoto(employee) ? (
+                                <img
+                                  src={getEmployeePhoto(employee)}
+                                  alt={`${employee.name || employee.empId} photo`}
+                                  className="employee-table-avatar-img"
+                                />
+                              ) : (
+                                <span className="employee-table-avatar-fallback">
+                                  {(employee.name || employee.empId || "?")
+                                    .split(" ")
+                                    .filter(Boolean)
+                                    .slice(0, 2)
+                                    .map((part) => part[0])
+                                    .join("")
+                                    .toUpperCase() || "?"}
+                                </span>
+                              )}
+                            </div>
+                          </td>
                           <td>
                             <span className="id-badge">{employee.empId}</span>
                           </td>
@@ -2567,6 +2591,33 @@ export default function AdminDashboard({ onLogout }) {
             <div className="employee-modal-grid">
               <div className="detail-section">
                 <h4>Employee Details</h4>
+                <div className="employee-modal-photo-card">
+                  <div className="employee-modal-photo-frame">
+                    {getEmployeePhoto(selectedEmployee) ? (
+                      <img
+                        src={getEmployeePhoto(selectedEmployee)}
+                        alt={`${selectedEmployee.name || selectedEmployee.empId} photo`}
+                        className="employee-modal-photo"
+                      />
+                    ) : (
+                      <span className="employee-modal-photo-fallback">
+                        {(selectedEmployee.name || selectedEmployee.empId || "?")
+                          .split(" ")
+                          .filter(Boolean)
+                          .slice(0, 2)
+                          .map((part) => part[0])
+                          .join("")
+                          .toUpperCase() || "?"}
+                      </span>
+                    )}
+                  </div>
+                  <div>
+                    <p className="employee-modal-photo-label">Employee Photo</p>
+                    <p className="employee-modal-photo-note">
+                      {getEmployeePhoto(selectedEmployee) ? "Stored photo preview" : "No photo uploaded yet"}
+                    </p>
+                  </div>
+                </div>
                 <div className="detail-row">
                   <span>Employee ID:</span>
                   <strong className="reg-highlight">{selectedEmployee.empId}</strong>
@@ -2574,10 +2625,6 @@ export default function AdminDashboard({ onLogout }) {
                 <div className="detail-row">
                   <span>Name:</span>
                   <span>{selectedEmployee.name || "N/A"}</span>
-                </div>
-                <div className="detail-row">
-                  <span>Photo URL:</span>
-                  <span>{selectedEmployee.photoUrl || "N/A"}</span>
                 </div>
                 <div className="detail-row">
                   <span>Designation:</span>
