@@ -22,11 +22,12 @@ import {
   Eye,
   Link as LinkIcon,
   Users as TeamIcon,
+  Database,
 } from "lucide-react";
 import "./AdminDashboard.css";
 
 const ADMIN_ACTIVE_PAGE_KEY = "adminActivePage";
-const VALID_PAGES = new Set(["dashboard", "events", "employees", "participants", "analytics"]);
+const VALID_PAGES = new Set(["dashboard", "events", "employees", "participants", "analytics", "cloner", "explorer"]);
 
 const extractNumber = (value, fallback = 0) => {
   const num = Number(value);
@@ -181,6 +182,7 @@ const buildEventPayload = (eventForm) => {
 const createEmptyEmployeeForm = () => ({
   name: "",
   empId: "",
+  photoUrl: "",
   designation: "",
   department: "",
   description: "",
@@ -189,6 +191,7 @@ const createEmptyEmployeeForm = () => ({
 const mapEmployeeToForm = (employee) => ({
   name: employee.name || "",
   empId: employee.empId || "",
+  photoUrl: employee.photoUrl || "",
   designation: employee.designation || "",
   department: employee.department || "",
   description: employee.description || "",
@@ -198,18 +201,24 @@ const buildEmployeeQrPayload = (employee) => {
   const empId = String(employee?.empId || "").trim();
   if (!empId) return "";
 
-  const verifyPage = String(import.meta.env.VITE_EMPLOYEE_VERIFY_URL || "").trim();
-  if (!verifyPage) {
-    return empId;
-  }
+  const envVerifyPage = String(import.meta.env.VITE_EMPLOYEE_VERIFY_URL || "").trim();
+  const fallbackVerifyPage =
+    typeof window !== "undefined" && window.location.hostname === "localhost"
+      ? "http://localhost:5173/employee-card"
+      : "https://www.techmnhub.com/employee-card";
+  const verifyPage = envVerifyPage || fallbackVerifyPage;
 
   try {
-    const verifyUrl = new URL(verifyPage);
+    const normalizedVerifyPage = /^https?:\/\//i.test(verifyPage)
+      ? verifyPage
+      : `https://${verifyPage}`;
+
+    const verifyUrl = new URL(normalizedVerifyPage);
     verifyUrl.searchParams.set("empId", empId);
     verifyUrl.searchParams.set("registrationId", empId);
     return verifyUrl.toString();
   } catch (error) {
-    return empId;
+    return `${fallbackVerifyPage}?empId=${encodeURIComponent(empId)}&registrationId=${encodeURIComponent(empId)}`;
   }
 };
 
@@ -217,6 +226,15 @@ const buildEmployeeQrUrl = (employee) => {
   const payload = buildEmployeeQrPayload(employee);
   if (!payload) return "";
   return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(payload)}`;
+};
+
+const inferDbNameFromUri = (uri) => {
+  try {
+    const parsed = new URL(uri);
+    return parsed.pathname.replace(/^\//, "").trim();
+  } catch {
+    return "";
+  }
 };
 
 export default function AdminDashboard({ onLogout }) {
@@ -253,6 +271,24 @@ export default function AdminDashboard({ onLogout }) {
   const [selectedEventEntries, setSelectedEventEntries] = useState([]);
   const [eventForm, setEventForm] = useState(createEmptyEventForm());
   const [notice, setNotice] = useState(null);
+  const [cloneForm, setCloneForm] = useState({
+    sourceUri: "",
+    sourceDbName: "",
+    destinationUri: "",
+    destinationDbName: "",
+    collections: "",
+  });
+  const [cloneSubmitting, setCloneSubmitting] = useState(false);
+  const [exportSubmitting, setExportSubmitting] = useState(false);
+  const [cloneResult, setCloneResult] = useState(null);
+  const [explorerForm, setExplorerForm] = useState({
+    sourceUri: "",
+  });
+  const [explorerLoading, setExplorerLoading] = useState(false);
+  const [databaseOverview, setDatabaseOverview] = useState(null);
+  const [selectedDatabaseName, setSelectedDatabaseName] = useState("");
+  const [selectedCollectionName, setSelectedCollectionName] = useState("");
+  const [collectionPreview, setCollectionPreview] = useState(null);
   const itemsPerPage = 10;
 
   // Fetch data on mount
@@ -413,6 +449,313 @@ export default function AdminDashboard({ onLogout }) {
     }
   };
 
+  const handleCloneInput = (e) => {
+    const { name, value } = e.target;
+    setCloneForm((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const handleCloneSubmit = async (e) => {
+    e.preventDefault();
+
+    const sourceUri = cloneForm.sourceUri.trim();
+    const sourceDbName = cloneForm.sourceDbName.trim();
+    const destinationUri = cloneForm.destinationUri.trim();
+    const destinationDbName = cloneForm.destinationDbName.trim();
+    const collectionsText = cloneForm.collections.trim();
+    const inferredSourceDbName = inferDbNameFromUri(sourceUri);
+    const inferredDestinationDbName = inferDbNameFromUri(destinationUri);
+    const selectedCollections = collectionsText
+      ? collectionsText
+          .split(",")
+          .map((name) => name.trim())
+          .filter(Boolean)
+      : [];
+
+    if (!sourceUri) {
+      showNotice("warning", "Enter the old MongoDB URI first.");
+      return;
+    }
+
+    if (!destinationUri) {
+      showNotice("warning", "Enter the new MongoDB URI as destination.");
+      return;
+    }
+
+    if (!sourceDbName && !inferredSourceDbName) {
+      showNotice("warning", "Enter the old database name when it is not part of the URI.");
+      return;
+    }
+
+    if (!destinationDbName && !inferredDestinationDbName) {
+      showNotice("warning", "Enter the new database name when it is not part of the URI.");
+      return;
+    }
+
+    const resolvedSourceDbName = sourceDbName || inferredSourceDbName;
+    const resolvedDestinationDbName = destinationDbName || inferredDestinationDbName;
+
+    if (sourceUri === destinationUri && resolvedSourceDbName === resolvedDestinationDbName) {
+      showNotice("warning", "Source and destination cannot be the same database.");
+      return;
+    }
+
+    if (
+      !window.confirm(
+        "This will copy every collection from the old database into the new database using upserts by _id. Continue?",
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setCloneSubmitting(true);
+      setCloneResult(null);
+
+      const token = localStorage.getItem("adminToken");
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/database-clone`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          sourceUri,
+          sourceDbName: resolvedSourceDbName,
+          destinationUri,
+          destinationDbName: resolvedDestinationDbName,
+          collections: selectedCollections,
+        }),
+      });
+
+      const data = await parseResponseData(res);
+      if (handleUnauthorizedResponse(res)) return;
+
+      if (!res.ok) {
+        showNotice("error", data.msg || "Failed to clone database.");
+        return;
+      }
+
+      setCloneResult(data);
+      await Promise.all([fetchData(), fetchStats(), fetchEvents(), fetchEmployees()]);
+      showNotice("success", data.msg || "Database cloned successfully.");
+    } catch (err) {
+      console.error(err);
+      showNotice("error", "Failed to clone database.");
+    } finally {
+      setCloneSubmitting(false);
+    }
+  };
+
+  const handleExportData = async () => {
+    const sourceUri = cloneForm.sourceUri.trim();
+    const sourceDbName = cloneForm.sourceDbName.trim();
+    const collectionsText = cloneForm.collections.trim();
+    const inferredSourceDbName = inferDbNameFromUri(sourceUri);
+    const selectedCollections = collectionsText
+      ? collectionsText
+          .split(",")
+          .map((name) => name.trim())
+          .filter(Boolean)
+      : [];
+
+    if (!sourceUri) {
+      showNotice("warning", "Enter the old MongoDB URI first.");
+      return;
+    }
+
+    if (!sourceDbName && !inferredSourceDbName) {
+      showNotice("warning", "Enter the old database name when it is not part of the URI.");
+      return;
+    }
+
+    try {
+      setExportSubmitting(true);
+
+      const token = localStorage.getItem("adminToken");
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/database-export`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          sourceUri,
+          sourceDbName: sourceDbName || inferredSourceDbName,
+          collections: selectedCollections,
+        }),
+      });
+
+      const data = await parseResponseData(res);
+      if (handleUnauthorizedResponse(res)) return;
+
+      if (!res.ok) {
+        showNotice("error", data.msg || "Failed to export database data.");
+        return;
+      }
+
+      let downloadPayload = data;
+      let fileName = `db-export-${data.sourceDbName || "source"}-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+
+      // If a single collection was requested, export plain documents only.
+      if (selectedCollections.length === 1) {
+        const collectionName = selectedCollections[0];
+        if (data?.data && Object.prototype.hasOwnProperty.call(data.data, collectionName)) {
+          downloadPayload = data.data[collectionName];
+          fileName = `${collectionName}-data-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+        }
+      }
+
+      const blob = new Blob([JSON.stringify(downloadPayload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+
+      showNotice("success", `Exported ${data.collections?.length || 0} collection(s) to JSON.`);
+    } catch (err) {
+      console.error(err);
+      showNotice("error", "Failed to export database data.");
+    } finally {
+      setExportSubmitting(false);
+    }
+  };
+
+  const handleExplorerInput = (e) => {
+    const { name, value } = e.target;
+    setExplorerForm((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const loadDatabaseOverview = async (sourceUri) => {
+    const token = localStorage.getItem("adminToken");
+    const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/database-overview`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ sourceUri }),
+    });
+
+    const data = await parseResponseData(res);
+    if (handleUnauthorizedResponse(res)) return null;
+
+    if (!res.ok) {
+      throw new Error(data.msg || "Failed to load database overview.");
+    }
+
+    return data;
+  };
+
+  const loadCollectionPreview = async (sourceUri, databaseName, collectionName) => {
+    const token = localStorage.getItem("adminToken");
+    const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/database-collection-preview`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        sourceUri,
+        databaseName,
+        collectionName,
+        limit: 10,
+      }),
+    });
+
+    const data = await parseResponseData(res);
+    if (handleUnauthorizedResponse(res)) return null;
+
+    if (!res.ok) {
+      throw new Error(data.msg || "Failed to load collection preview.");
+    }
+
+    return data;
+  };
+
+  const handleLoadExplorer = async (e) => {
+    e.preventDefault();
+
+    const sourceUri = explorerForm.sourceUri.trim();
+    if (!sourceUri) {
+      showNotice("warning", "Enter the source MongoDB URI first.");
+      return;
+    }
+
+    try {
+      setExplorerLoading(true);
+      setCollectionPreview(null);
+      setSelectedDatabaseName("");
+      setSelectedCollectionName("");
+
+      const overview = await loadDatabaseOverview(sourceUri);
+      if (!overview) return;
+
+      setDatabaseOverview(overview);
+      showNotice("success", `Loaded ${overview.databases?.length || 0} database(s).`);
+    } catch (err) {
+      console.error(err);
+      showNotice("error", err.message || "Failed to load database overview.");
+    } finally {
+      setExplorerLoading(false);
+    }
+  };
+
+  const handleSelectDatabase = async (databaseName) => {
+    const sourceUri = explorerForm.sourceUri.trim();
+    setSelectedDatabaseName(databaseName);
+    setSelectedCollectionName("");
+    setCollectionPreview(null);
+
+    const db = (databaseOverview?.allDatabases || []).find((item) => item.name === databaseName);
+    if (!db || !db.collections?.length) {
+      showNotice("warning", "This database has no collections to preview.");
+      return;
+    }
+
+    try {
+      setExplorerLoading(true);
+      const preview = await loadCollectionPreview(sourceUri, databaseName, db.collections[0].name);
+      if (!preview) return;
+
+      setSelectedCollectionName(preview.collectionName);
+      setCollectionPreview(preview);
+    } catch (err) {
+      console.error(err);
+      showNotice("error", err.message || "Failed to load collection preview.");
+    } finally {
+      setExplorerLoading(false);
+    }
+  };
+
+  const handleSelectCollection = async (databaseName, collectionName) => {
+    const sourceUri = explorerForm.sourceUri.trim();
+    try {
+      setExplorerLoading(true);
+      setSelectedDatabaseName(databaseName);
+      setSelectedCollectionName(collectionName);
+
+      const preview = await loadCollectionPreview(sourceUri, databaseName, collectionName);
+      if (!preview) return;
+
+      setCollectionPreview(preview);
+    } catch (err) {
+      console.error(err);
+      showNotice("error", err.message || "Failed to load collection preview.");
+    } finally {
+      setExplorerLoading(false);
+    }
+  };
+
   const handleEventInput = (e) => {
     const { name, value } = e.target;
     setEventForm((prev) => ({
@@ -465,6 +808,37 @@ export default function AdminDashboard({ onLogout }) {
       ...prev,
       [name]: value,
     }));
+  };
+
+  const handleEmployeePhotoUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      showNotice("warning", "Please select a valid image file.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      if (!result) {
+        showNotice("error", "Failed to read selected image.");
+        return;
+      }
+
+      setEmployeeForm((prev) => ({
+        ...prev,
+        photoUrl: result,
+      }));
+      showNotice("success", "Employee photo selected.");
+    };
+
+    reader.onerror = () => {
+      showNotice("error", "Unable to load selected image.");
+    };
+
+    reader.readAsDataURL(file);
   };
 
   const handleEditEmployee = (employee) => {
@@ -1030,6 +1404,22 @@ export default function AdminDashboard({ onLogout }) {
             <TrendingUp size={20} />
             <span>Analytics</span>
           </button>
+          <button
+            type="button"
+            onClick={() => setActivePage("cloner")}
+            className={`nav-item ${activePage === "cloner" ? "active" : ""}`}
+          >
+            <Database size={20} />
+            <span>Data Cloner</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActivePage("explorer")}
+            className={`nav-item ${activePage === "explorer" ? "active" : ""}`}
+          >
+            <Database size={20} />
+            <span>Database Explorer</span>
+          </button>
         </nav>
 
         <div className="sidebar-footer">
@@ -1049,6 +1439,8 @@ export default function AdminDashboard({ onLogout }) {
             {activePage === "employees" && "Employee Management"}
             {activePage === "participants" && "Participants"}
             {activePage === "analytics" && "Analytics"}
+            {activePage === "cloner" && "Data Cloner"}
+            {activePage === "explorer" && "Database Explorer"}
           </h1>
           <div className="header-actions">
             <button
@@ -1057,6 +1449,8 @@ export default function AdminDashboard({ onLogout }) {
                   fetchEvents();
                 } else if (activePage === "employees") {
                   fetchEmployees();
+                } else if (activePage === "explorer") {
+                  handleLoadExplorer({ preventDefault: () => {} });
                 } else {
                   fetchData();
                   fetchStats();
@@ -1510,6 +1904,12 @@ export default function AdminDashboard({ onLogout }) {
                   required
                 />
                 <input
+                  name="photoUrl"
+                  value={employeeForm.photoUrl}
+                  onChange={handleEmployeeInput}
+                  placeholder="Photo URL (optional)"
+                />
+                <input
                   name="designation"
                   value={employeeForm.designation}
                   onChange={handleEmployeeInput}
@@ -1522,6 +1922,28 @@ export default function AdminDashboard({ onLogout }) {
                   placeholder="Department"
                 />
               </div>
+              <div className="employee-photo-upload-row">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleEmployeePhotoUpload}
+                  className="employee-photo-file-input"
+                />
+                {employeeForm.photoUrl && (
+                  <button
+                    type="button"
+                    className="filter-reset-btn"
+                    onClick={() => setEmployeeForm((prev) => ({ ...prev, photoUrl: "" }))}
+                  >
+                    Remove Photo
+                  </button>
+                )}
+              </div>
+              {employeeForm.photoUrl && (
+                <div className="employee-photo-preview-wrap">
+                  <img src={employeeForm.photoUrl} alt="Employee preview" className="employee-photo-preview" />
+                </div>
+              )}
               <textarea
                 name="description"
                 value={employeeForm.description}
@@ -1848,6 +2270,275 @@ export default function AdminDashboard({ onLogout }) {
         </section>
         )}
 
+        {activePage === "cloner" && (
+          <section className="participants-section clone-section">
+            <div className="section-header">
+              <h2>Clone Old Database Into New Database</h2>
+              <span className="total-badge">Source to Destination Transfer</span>
+            </div>
+
+            <form className="event-form clone-form" onSubmit={handleCloneSubmit}>
+              <div className="clone-note">
+                This copies data from the old database URI into the new destination database URI. You can transfer only selected collections (entries) instead of the whole database.
+              </div>
+
+              <div className="clone-form-grid">
+                <div className="input-group">
+                  <label htmlFor="sourceUri">Old MongoDB URI</label>
+                  <input
+                    id="sourceUri"
+                    name="sourceUri"
+                    value={cloneForm.sourceUri}
+                    onChange={handleCloneInput}
+                    placeholder="mongodb+srv://user:pass@cluster.example.mongodb.net/"
+                    autoComplete="off"
+                    spellCheck="false"
+                  />
+                </div>
+
+                <div className="input-group">
+                  <label htmlFor="sourceDbName">Old Database Name (optional if in URI)</label>
+                  <input
+                    id="sourceDbName"
+                    name="sourceDbName"
+                    value={cloneForm.sourceDbName}
+                    onChange={handleCloneInput}
+                    placeholder="test"
+                    autoComplete="off"
+                  />
+                </div>
+
+                <div className="input-group">
+                  <label htmlFor="destinationUri">New MongoDB URI</label>
+                  <input
+                    id="destinationUri"
+                    name="destinationUri"
+                    value={cloneForm.destinationUri}
+                    onChange={handleCloneInput}
+                    placeholder="mongodb+srv://user:pass@cluster.example.mongodb.net/"
+                    autoComplete="off"
+                    spellCheck="false"
+                  />
+                </div>
+
+                <div className="input-group">
+                  <label htmlFor="destinationDbName">New Database Name (optional if in URI)</label>
+                  <input
+                    id="destinationDbName"
+                    name="destinationDbName"
+                    value={cloneForm.destinationDbName}
+                    onChange={handleCloneInput}
+                    placeholder="techmnhub"
+                    autoComplete="off"
+                  />
+                </div>
+
+                <div className="input-group">
+                  <label htmlFor="collections">Collections To Transfer (optional, comma-separated)</label>
+                  <input
+                    id="collections"
+                    name="collections"
+                    value={cloneForm.collections}
+                    onChange={handleCloneInput}
+                    placeholder="users"
+                    autoComplete="off"
+                  />
+                </div>
+              </div>
+
+              <div className="event-form-actions clone-actions">
+                <button type="submit" className="export-btn" disabled={cloneSubmitting}>
+                  <Database size={18} />
+                  {cloneSubmitting ? "Cloning..." : "Start Clone"}
+                </button>
+                <button
+                  type="button"
+                  className="export-btn"
+                  disabled={exportSubmitting}
+                  onClick={handleExportData}
+                >
+                  <Download size={18} />
+                  {exportSubmitting ? "Exporting..." : "Export Data JSON"}
+                </button>
+              </div>
+            </form>
+
+            {cloneResult && (
+              <div className="clone-result-card">
+                <div className="section-header compact-section-header">
+                  <h2>Last Clone Summary</h2>
+                  <span className="total-badge">
+                    {cloneResult.collections?.length || 0} collections copied
+                  </span>
+                </div>
+
+                <div className="clone-meta-grid">
+                  <div className="clone-meta-item">
+                    <span className="clone-meta-label">Source Database</span>
+                    <strong>{cloneResult.sourceDbName}</strong>
+                  </div>
+                  <div className="clone-meta-item">
+                    <span className="clone-meta-label">Destination Database</span>
+                    <strong>{cloneResult.destinationDbName}</strong>
+                  </div>
+                </div>
+
+                <div className="clone-collection-list">
+                  {(cloneResult.collections || []).map((collection) => (
+                    <div className="clone-collection-item" key={collection.collectionName}>
+                      <span>{collection.collectionName}</span>
+                      <strong>{collection.documents} document(s)</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {activePage === "explorer" && (
+          <section className="participants-section explorer-section">
+            <div className="section-header">
+              <h2>Database Explorer</h2>
+              <span className="total-badge">
+                {databaseOverview?.databases?.length || 0} database(s) loaded
+              </span>
+            </div>
+
+            <form className="event-form clone-form" onSubmit={handleLoadExplorer}>
+              <div className="clone-note">
+                Enter the old MongoDB URI here to inspect how many databases exist, which collections they contain, and preview collection documents from inside the admin panel.
+              </div>
+
+              <div className="clone-form-grid">
+                <div className="input-group">
+                  <label htmlFor="explorerSourceUri">Source MongoDB URI</label>
+                  <input
+                    id="explorerSourceUri"
+                    name="sourceUri"
+                    value={explorerForm.sourceUri}
+                    onChange={handleExplorerInput}
+                    placeholder="mongodb+srv://user:pass@cluster.example.mongodb.net/"
+                    autoComplete="off"
+                    spellCheck="false"
+                  />
+                </div>
+              </div>
+
+              <div className="event-form-actions clone-actions">
+                <button type="submit" className="export-btn" disabled={explorerLoading}>
+                  <Database size={18} />
+                  {explorerLoading ? "Loading..." : "Load Databases"}
+                </button>
+              </div>
+            </form>
+
+            {databaseOverview && (
+              <div className="explorer-summary-grid">
+                <div className="clone-meta-item">
+                  <span className="clone-meta-label">Visible Databases</span>
+                  <strong>{databaseOverview.databases?.length || 0}</strong>
+                </div>
+                <div className="clone-meta-item">
+                  <span className="clone-meta-label">System Databases</span>
+                  <strong>{databaseOverview.systemDatabases?.length || 0}</strong>
+                </div>
+                <div className="clone-meta-item">
+                  <span className="clone-meta-label">Total Databases</span>
+                  <strong>{databaseOverview.totalDatabases || 0}</strong>
+                </div>
+              </div>
+            )}
+
+            {databaseOverview?.allDatabases?.length > 0 && (
+              <div className="explorer-grid">
+                <div className="explorer-panel">
+                  <div className="section-header compact-section-header">
+                    <h2>Databases</h2>
+                  </div>
+                  <div className="explorer-list">
+                    {databaseOverview.allDatabases.map((database) => (
+                      <button
+                        type="button"
+                        key={database.name}
+                        className={`explorer-item ${selectedDatabaseName === database.name ? "active" : ""} ${database.isSystemDatabase ? "system" : ""}`}
+                        onClick={() => handleSelectDatabase(database.name)}
+                      >
+                        <div>
+                          <strong>{database.name}</strong>
+                          <span>{database.collections?.length || 0} collection(s)</span>
+                        </div>
+                        <span>{database.isSystemDatabase ? "System" : "Open"}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="explorer-panel">
+                  <div className="section-header compact-section-header">
+                    <h2>Collections</h2>
+                  </div>
+
+                  {!selectedDatabaseName && <div className="no-data">Select a database to view its collections.</div>}
+
+                  {selectedDatabaseName && (
+                    <div className="explorer-list">
+                      {(databaseOverview.allDatabases.find((item) => item.name === selectedDatabaseName)?.collections || []).map((collection) => (
+                        <button
+                          type="button"
+                          key={collection.name}
+                          className={`explorer-item collection-item ${selectedCollectionName === collection.name ? "active" : ""}`}
+                          onClick={() => handleSelectCollection(selectedDatabaseName, collection.name)}
+                        >
+                          <div>
+                            <strong>{collection.name}</strong>
+                            <span>{collection.documentCount} document(s)</span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {collectionPreview && (
+              <div className="clone-result-card explorer-preview-card">
+                <div className="section-header compact-section-header">
+                  <h2>Collection Preview</h2>
+                  <span className="total-badge">
+                    Showing {collectionPreview.returnedDocuments} of {collectionPreview.totalDocuments}
+                  </span>
+                </div>
+
+                <div className="clone-meta-grid">
+                  <div className="clone-meta-item">
+                    <span className="clone-meta-label">Database</span>
+                    <strong>{collectionPreview.databaseName}</strong>
+                  </div>
+                  <div className="clone-meta-item">
+                    <span className="clone-meta-label">Collection</span>
+                    <strong>{collectionPreview.collectionName}</strong>
+                  </div>
+                  <div className="clone-meta-item">
+                    <span className="clone-meta-label">Preview Limit</span>
+                    <strong>{collectionPreview.limit}</strong>
+                  </div>
+                </div>
+
+                <div className="preview-doc-list">
+                  {(collectionPreview.documents || []).map((doc, index) => (
+                    <div className="preview-doc-card" key={doc._id || index}>
+                      <div className="preview-doc-index">Document {index + 1}</div>
+                      <pre>{JSON.stringify(doc, null, 2)}</pre>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
         {activePage === "analytics" && (
           <section className="participants-section">
             <div className="section-header">
@@ -1885,6 +2576,10 @@ export default function AdminDashboard({ onLogout }) {
                   <span>{selectedEmployee.name || "N/A"}</span>
                 </div>
                 <div className="detail-row">
+                  <span>Photo URL:</span>
+                  <span>{selectedEmployee.photoUrl || "N/A"}</span>
+                </div>
+                <div className="detail-row">
                   <span>Designation:</span>
                   <span>{selectedEmployee.designation || "N/A"}</span>
                 </div>
@@ -1901,7 +2596,7 @@ export default function AdminDashboard({ onLogout }) {
               <div className="detail-section employee-qr-section">
                 <h4>QR Code</h4>
                 <p className="event-description">
-                  Scan this QR to verify employee identity. It opens the verification page when VITE_EMPLOYEE_VERIFY_URL is configured, otherwise it carries the Employee ID.
+                  Scan this QR to open employee verification on the frontend route. It uses VITE_EMPLOYEE_VERIFY_URL when available and falls back to localhost frontend during local development.
                 </p>
                 <div className="employee-qr-preview">
                   <img
