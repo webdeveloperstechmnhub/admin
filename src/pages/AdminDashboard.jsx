@@ -1896,7 +1896,6 @@ export default function AdminDashboard({ onLogout }) {
                   onChange={handleEmployeeInput}
                   placeholder="Employee ID"
                   required
-                  readOnly={Boolean(editingEmployeeId)}
                 />
                 <input
                   name="name"
