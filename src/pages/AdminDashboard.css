@@ -498,8 +498,44 @@
   min-width: 220px;
 }
 
+.employees-section .data-table td:nth-child(5) {
+  min-width: 160px;
+}
+
 .employees-section .data-table td:last-child {
-  min-width: 110px;
+  min-width: 180px;
+}
+
+.employee-status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border: 1px solid transparent;
+}
+
+.employee-status-badge.active {
+  color: #86efac;
+  border-color: rgba(34, 197, 94, 0.35);
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.employee-status-badge.terminated {
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.45);
+  background: rgba(239, 68, 68, 0.14);
+}
+
+.employee-action-note {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #fca5a5;
 }
 
 .employee-modal {

@@ -1,16 +1,58 @@
-# React + Vite
+﻿# Website Admin
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Admin dashboard for events, employees, participants, and analytics.
 
-Currently, two official plugins are available:
+## Tech Stack
+- React 19
+- Vite 7
+- Lucide React
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Prerequisites
+- Node.js 18+
+- npm 9+
 
-## React Compiler
+## Install
+```bash
+npm install
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Environment Variables
+Create `.env` in this folder:
 
-## Expanding the ESLint configuration
+```env
+VITE_API_URL=<YOUR_BACKEND_API_BASE>
+VITE_ADMIN_EMAIL=<YOUR_ADMIN_EMAIL>
+VITE_ADMIN_PASS=<YOUR_ADMIN_PASSWORD>
+VITE_EMPLOYEE_VERIFY_URL=<YOUR_EMPLOYEE_VERIFY_ROUTE>
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Example:
+```env
+VITE_API_URL=http://localhost:5001/api
+VITE_EMPLOYEE_VERIFY_URL=http://localhost:5173/employee-card
+```
+
+## Run
+```bash
+npm run dev
+```
+
+## Build
+```bash
+npm run build
+npm run preview
+```
+
+## Features Included
+- Dashboard stats
+- Event management
+- Employee management (QR preview/download, photo-safe URL display)
+- Participants management
+- Analytics
+
+## Panel Policy
+- Cloner/Explorer pages are intentionally not exposed in website admin UI.
+
+## Notes
+- Keep all secrets in `.env` only.
+- Do not commit admin credentials.

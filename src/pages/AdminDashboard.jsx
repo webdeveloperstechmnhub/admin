@@ -240,6 +240,13 @@ const buildEmployeeQrFallbackUrl = (employee) => {
 };
 
 const getEmployeePhoto = (employee) => String(employee?.photoUrl || "").trim();
+const getEmployeeEmploymentStatus = (employee) =>
+  String(employee?.employmentStatus || "active").trim().toLowerCase() === "terminated"
+    ? "terminated"
+    : "active";
+const isEmployeeTerminated = (employee) => getEmployeeEmploymentStatus(employee) === "terminated";
+const getEmployeeStatusLabel = (employee) =>
+  isEmployeeTerminated(employee) ? "Terminated" : "Active";
 
 const formatEmployeePhotoUrl = (photoUrl) => {
   const value = String(photoUrl || "").trim();
@@ -1025,6 +1032,72 @@ export default function AdminDashboard({ onLogout }) {
     } catch (err) {
       console.error(err);
       showNotice("error", "Failed to delete employee.");
+    }
+  };
+
+  const handleTerminateEmployee = async (employee) => {
+    if (isEmployeeTerminated(employee)) {
+      showNotice("warning", "Employee is already terminated.");
+      return;
+    }
+
+    const reasonInput = window.prompt(
+      `Enter termination reason for ${employee.name || employee.empId}:`,
+      "",
+    );
+
+    if (reasonInput === null) {
+      return;
+    }
+
+    const reason = String(reasonInput).trim();
+    if (!reason) {
+      showNotice("warning", "Termination reason is required.");
+      return;
+    }
+
+    if (!confirm(`Terminate employee ${employee.name || employee.empId}?`)) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("adminToken");
+      const res = await fetch(
+        `${import.meta.env.VITE_API_URL}/admin/employees/${encodeURIComponent(employee.empId)}/terminate`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ reason }),
+        },
+      );
+
+      const data = await parseResponseData(res);
+      if (handleUnauthorizedResponse(res)) return;
+      if (!res.ok) {
+        showNotice("error", data.msg || "Failed to terminate employee.");
+        return;
+      }
+
+      if (selectedEmployee?.empId === employee.empId && data.employee) {
+        setSelectedEmployee(data.employee);
+      }
+
+      await fetchEmployees();
+
+      let successMessage = data.msg || "Employee terminated.";
+      if (data.emailStatus === "failed") {
+        successMessage += " Termination letter could not be sent.";
+      } else if (data.emailStatus === "skipped") {
+        successMessage += " Termination letter skipped because employee email is missing.";
+      }
+
+      showNotice(data.emailStatus === "failed" ? "warning" : "success", successMessage);
+    } catch (err) {
+      console.error(err);
+      showNotice("error", "Failed to terminate employee.");
     }
   };
 
@@ -2110,6 +2183,7 @@ export default function AdminDashboard({ onLogout }) {
                       <th>Photo</th>
                       <th>Employee ID</th>
                       <th>Name</th>
+                      <th>Status</th>
                       <th>Mobile</th>
                       <th>Email</th>
                       <th>Joining Date</th>
@@ -2123,7 +2197,7 @@ export default function AdminDashboard({ onLogout }) {
                   <tbody>
                     {filteredEmployees.length === 0 ? (
                       <tr>
-                        <td colSpan="11" className="no-data">
+                        <td colSpan="12" className="no-data">
                           No employees found.
                         </td>
                       </tr>
@@ -2159,6 +2233,11 @@ export default function AdminDashboard({ onLogout }) {
                               <span className="user-name">{employee.name}</span>
                             </div>
                           </td>
+                          <td>
+                            <span className={`employee-status-badge ${getEmployeeEmploymentStatus(employee)}`}>
+                              {getEmployeeStatusLabel(employee)}
+                            </span>
+                          </td>
                           <td>{employee.mobile || "N/A"}</td>
                           <td>{employee.email || "N/A"}</td>
                           <td>{employee.joiningDate ? new Date(employee.joiningDate).toLocaleDateString() : "N/A"}</td>
@@ -2189,6 +2268,18 @@ export default function AdminDashboard({ onLogout }) {
                               >
                                 <Edit size={16} />
                               </button>
+                              {isEmployeeTerminated(employee) ? (
+                                <span className="employee-action-note">Terminated</span>
+                              ) : (
+                                <button
+                                  onClick={() => handleTerminateEmployee(employee)}
+                                  className="action-btn delete"
+                                  title="Terminate Employee"
+                                  type="button"
+                                >
+                                  <UserX size={16} />
+                                </button>
+                              )}
                               <button
                                 onClick={() => handleDeleteEmployee(employee)}
                                 className="action-btn delete"
@@ -2502,6 +2593,12 @@ export default function AdminDashboard({ onLogout }) {
                   <span>{selectedEmployee.name || "N/A"}</span>
                 </div>
                 <div className="detail-row">
+                  <span>Status:</span>
+                  <span className={`employee-status-badge ${getEmployeeEmploymentStatus(selectedEmployee)}`}>
+                    {getEmployeeStatusLabel(selectedEmployee)}
+                  </span>
+                </div>
+                <div className="detail-row">
                   <span>Mobile:</span>
                   <span>{selectedEmployee.mobile || "N/A"}</span>
                 </div>
@@ -2533,6 +2630,30 @@ export default function AdminDashboard({ onLogout }) {
                   <span>Description:</span>
                   <span>{selectedEmployee.description || "N/A"}</span>
                 </div>
+                {isEmployeeTerminated(selectedEmployee) && (
+                  <>
+                    <div className="detail-row">
+                      <span>Termination Date:</span>
+                      <span>
+                        {selectedEmployee.terminationDate
+                          ? new Date(selectedEmployee.terminationDate).toLocaleString()
+                          : "N/A"}
+                      </span>
+                    </div>
+                    <div className="detail-row">
+                      <span>Termination Reason:</span>
+                      <span>{selectedEmployee.terminationReason || "N/A"}</span>
+                    </div>
+                    <div className="detail-row">
+                      <span>Letter Sent:</span>
+                      <span>
+                        {selectedEmployee.terminationLetterSentAt
+                          ? new Date(selectedEmployee.terminationLetterSentAt).toLocaleString()
+                          : "No"}
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
 
               <div className="detail-section employee-qr-section">
