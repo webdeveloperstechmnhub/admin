@@ -182,6 +182,9 @@ const createEmptyEmployeeForm = () => ({
   name: "",
   empId: "",
   photoUrl: "",
+  mobile: "",
+  email: "",
+  joiningDate: "",
   designation: "",
   department: "",
   description: "",
@@ -191,6 +194,9 @@ const mapEmployeeToForm = (employee) => ({
   name: employee.name || "",
   empId: employee.empId || "",
   photoUrl: employee.photoUrl || "",
+  mobile: employee.mobile || "",
+  email: employee.email || "",
+  joiningDate: employee.joiningDate ? String(employee.joiningDate).slice(0, 10) : "",
   designation: employee.designation || "",
   department: employee.department || "",
   description: employee.description || "",
@@ -224,10 +230,28 @@ const buildEmployeeQrPayload = (employee) => {
 const buildEmployeeQrUrl = (employee) => {
   const payload = buildEmployeeQrPayload(employee);
   if (!payload) return "";
-  return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(payload)}`;
+  return `https://api.qrserver.com/v1/create-qr-code/?size=240x240&qzone=2&format=png&color=000000&bgcolor=FFFFFF&data=${encodeURIComponent(payload)}`;
+};
+
+const buildEmployeeQrFallbackUrl = (employee) => {
+  const payload = buildEmployeeQrPayload(employee);
+  if (!payload) return "";
+  return `https://quickchart.io/qr?size=240&margin=2&ecLevel=M&dark=000000&light=ffffff&text=${encodeURIComponent(payload)}`;
 };
 
 const getEmployeePhoto = (employee) => String(employee?.photoUrl || "").trim();
+
+const formatEmployeePhotoUrl = (photoUrl) => {
+  const value = String(photoUrl || "").trim();
+  if (!value) return "N/A";
+
+  if (/^data:image\//i.test(value)) {
+    const sizeKb = Math.max(1, Math.round(value.length / 1024));
+    return `Embedded image data (${sizeKb} KB)`;
+  }
+
+  return value;
+};
 
 const inferDbNameFromUri = (uri) => {
   try {
@@ -260,12 +284,18 @@ export default function AdminDashboard({ onLogout }) {
   const [editingEventId, setEditingEventId] = useState(null);
   const [employees, setEmployees] = useState([]);
   const [employeesLoading, setEmployeesLoading] = useState(false);
+  const [employeePage, setEmployeePage] = useState(1);
+  const [employeeTotal, setEmployeeTotal] = useState(0);
+  const [employeeTotalPages, setEmployeeTotalPages] = useState(1);
   const [employeeSubmitting, setEmployeeSubmitting] = useState(false);
   const [editingEmployeeId, setEditingEmployeeId] = useState(null);
   const [employeeForm, setEmployeeForm] = useState(createEmptyEmployeeForm());
   const [employeeSearch, setEmployeeSearch] = useState("");
+  const [employeeSort, setEmployeeSort] = useState("latest");
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [showEmployeeModal, setShowEmployeeModal] = useState(false);
+  const [employeeQrSrc, setEmployeeQrSrc] = useState("");
+  const [employeeQrFailed, setEmployeeQrFailed] = useState(false);
   const [showEntriesModal, setShowEntriesModal] = useState(false);
   const [entriesLoading, setEntriesLoading] = useState(false);
   const [selectedEventForEntries, setSelectedEventForEntries] = useState(null);
@@ -291,14 +321,26 @@ export default function AdminDashboard({ onLogout }) {
   const [selectedCollectionName, setSelectedCollectionName] = useState("");
   const [collectionPreview, setCollectionPreview] = useState(null);
   const itemsPerPage = 10;
+  const employeeItemsPerPage = 20;
 
   // Fetch data on mount
   useEffect(() => {
     fetchData();
     fetchStats();
     fetchEvents();
-    fetchEmployees();
   }, []);
+
+  useEffect(() => {
+    if (activePage !== "employees") {
+      return undefined;
+    }
+
+    const timerId = setTimeout(() => {
+      fetchEmployees();
+    }, 250);
+
+    return () => clearTimeout(timerId);
+  }, [activePage, employeePage, employeeSearch, employeeSort]);
 
   useEffect(() => {
     localStorage.setItem(ADMIN_ACTIVE_PAGE_KEY, activePage);
@@ -317,6 +359,45 @@ export default function AdminDashboard({ onLogout }) {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, filterStatus, filterCategory, filterEvent]);
+
+  useEffect(() => {
+    if (!showEmployeeModal || !selectedEmployee) {
+      setEmployeeQrSrc("");
+      setEmployeeQrFailed(false);
+      return;
+    }
+
+    setEmployeeQrSrc(buildEmployeeQrUrl(selectedEmployee));
+    setEmployeeQrFailed(false);
+  }, [showEmployeeModal, selectedEmployee?._id, selectedEmployee?.empId]);
+
+  const handleDownloadEmployeeQr = async () => {
+    const qrUrl = employeeQrSrc || (selectedEmployee ? buildEmployeeQrUrl(selectedEmployee) : "");
+    const empId = String(selectedEmployee?.empId || "employee").trim() || "employee";
+
+    if (!qrUrl) {
+      showNotice("warning", "QR URL is not available yet.");
+      return;
+    }
+
+    try {
+      const response = await fetch(qrUrl);
+      if (!response.ok) throw new Error("QR fetch failed");
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = `${empId}-qr.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      window.open(qrUrl, "_blank", "noopener,noreferrer");
+      showNotice("warning", "Direct download was blocked. Opened QR in a new tab.");
+    }
+  };
 
   const showNotice = (type, message) => {
     setNotice({
@@ -431,14 +512,38 @@ export default function AdminDashboard({ onLogout }) {
     try {
       setEmployeesLoading(true);
       const token = localStorage.getItem("adminToken");
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/employees`, {
+      const params = new URLSearchParams({
+        page: String(employeePage),
+        limit: String(employeeItemsPerPage),
+        sort: employeeSort,
+      });
+
+      const search = employeeSearch.trim();
+      if (search) {
+        params.set("q", search);
+      }
+
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/employees?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
       const data = await parseResponseData(res);
       if (handleUnauthorizedResponse(res)) return;
       if (res.ok) {
-        setEmployees(data);
+        if (Array.isArray(data)) {
+          setEmployees(data);
+          setEmployeeTotal(data.length);
+          setEmployeeTotalPages(1);
+          return;
+        }
+
+        const items = Array.isArray(data.items) ? data.items : [];
+        const total = Number(data.pagination?.total) || items.length;
+        const totalPages = Number(data.pagination?.totalPages) || 1;
+
+        setEmployees(items);
+        setEmployeeTotal(total);
+        setEmployeeTotalPages(totalPages);
       } else {
         showNotice("error", data.msg || "Failed to load employees.");
       }
@@ -1290,18 +1395,8 @@ export default function AdminDashboard({ onLogout }) {
   }, [users, events]);
 
   const filteredEmployees = useMemo(() => {
-    const term = employeeSearch.trim().toLowerCase();
-
-    if (!term) {
-      return employees;
-    }
-
-    return employees.filter((employee) => {
-      return [employee.name, employee.empId, employee.designation, employee.department, employee.description]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(term));
-    });
-  }, [employees, employeeSearch]);
+    return employees;
+  }, [employees]);
 
   const checkedInUsers = useMemo(() => {
     return users
@@ -1860,8 +1955,11 @@ export default function AdminDashboard({ onLogout }) {
         {activePage === "employees" && (
           <section className="participants-section employees-section">
             <div className="section-header">
-              <h2>Employee Management</h2>
-              <span className="total-badge">{filteredEmployees.length} employees</span>
+              <div className="section-title-wrap">
+                <h2>Employee Management</h2>
+                <p className="section-subtitle">Manage profile fields, contact info, joining date, and QR records.</p>
+              </div>
+              <span className="total-badge">{employeeTotal} employees</span>
             </div>
 
             <form className="event-form employee-form" onSubmit={handleSaveEmployee}>
@@ -1875,6 +1973,7 @@ export default function AdminDashboard({ onLogout }) {
                   onChange={handleEmployeeInput}
                   placeholder="Employee ID"
                   required
+                  readOnly={Boolean(editingEmployeeId)}
                 />
                 <input
                   name="name"
@@ -1882,6 +1981,26 @@ export default function AdminDashboard({ onLogout }) {
                   onChange={handleEmployeeInput}
                   placeholder="Employee name"
                   required
+                />
+                <input
+                  name="mobile"
+                  value={employeeForm.mobile}
+                  onChange={handleEmployeeInput}
+                  placeholder="Mobile number"
+                />
+                <input
+                  name="email"
+                  type="email"
+                  value={employeeForm.email}
+                  onChange={handleEmployeeInput}
+                  placeholder="Email"
+                />
+                <input
+                  name="joiningDate"
+                  type="date"
+                  value={employeeForm.joiningDate}
+                  onChange={handleEmployeeInput}
+                  placeholder="Joining date"
                 />
                 <input
                   name="photoUrl"
@@ -1925,6 +2044,7 @@ export default function AdminDashboard({ onLogout }) {
                 </div>
               )}
               <textarea
+                className="employee-description-input"
                 name="description"
                 value={employeeForm.description}
                 onChange={handleEmployeeInput}
@@ -1957,23 +2077,42 @@ export default function AdminDashboard({ onLogout }) {
                 <Search size={18} />
                 <input
                   type="text"
-                  placeholder="Search by name, ID, designation, department, description..."
+                  placeholder="Search by name, ID, email, mobile, designation..."
                   value={employeeSearch}
-                  onChange={(e) => setEmployeeSearch(e.target.value)}
+                  onChange={(e) => {
+                    setEmployeeSearch(e.target.value);
+                    setEmployeePage(1);
+                  }}
                 />
+              </div>
+              <div className="filter-group">
+                <select
+                  value={employeeSort}
+                  onChange={(e) => {
+                    setEmployeeSort(e.target.value);
+                    setEmployeePage(1);
+                  }}
+                  className="filter-select"
+                >
+                  <option value="latest">Latest employees first</option>
+                  <option value="oldest">Oldest employees first</option>
+                </select>
               </div>
             </div>
 
             {employeesLoading ? (
-              <p>Loading employees...</p>
+              <p className="employee-loading-note">Loading employees...</p>
             ) : (
-              <div className="table-container">
+              <div className="table-container employee-table-container">
                 <table className="data-table">
                   <thead>
                     <tr>
                       <th>Photo</th>
                       <th>Employee ID</th>
                       <th>Name</th>
+                      <th>Mobile</th>
+                      <th>Email</th>
+                      <th>Joining Date</th>
                       <th>Designation</th>
                       <th>Department</th>
                       <th>Description</th>
@@ -1984,7 +2123,7 @@ export default function AdminDashboard({ onLogout }) {
                   <tbody>
                     {filteredEmployees.length === 0 ? (
                       <tr>
-                        <td colSpan="8" className="no-data">
+                        <td colSpan="11" className="no-data">
                           No employees found.
                         </td>
                       </tr>
@@ -2020,6 +2159,9 @@ export default function AdminDashboard({ onLogout }) {
                               <span className="user-name">{employee.name}</span>
                             </div>
                           </td>
+                          <td>{employee.mobile || "N/A"}</td>
+                          <td>{employee.email || "N/A"}</td>
+                          <td>{employee.joiningDate ? new Date(employee.joiningDate).toLocaleDateString() : "N/A"}</td>
                           <td>{employee.designation || "N/A"}</td>
                           <td>{employee.department || "N/A"}</td>
                           <td className="employee-description-cell">{employee.description || "N/A"}</td>
@@ -2062,6 +2204,30 @@ export default function AdminDashboard({ onLogout }) {
                     )}
                   </tbody>
                 </table>
+              </div>
+            )}
+
+            {employeeTotalPages > 1 && (
+              <div className="pagination">
+                <button
+                  onClick={() => setEmployeePage((p) => Math.max(1, p - 1))}
+                  disabled={employeePage === 1}
+                  className="page-btn"
+                  type="button"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <span className="page-info">
+                  Page {employeePage} of {employeeTotalPages}
+                </span>
+                <button
+                  onClick={() => setEmployeePage((p) => Math.min(employeeTotalPages, p + 1))}
+                  disabled={employeePage === employeeTotalPages}
+                  className="page-btn"
+                  type="button"
+                >
+                  <ChevronRight size={16} />
+                </button>
               </div>
             )}
           </section>
@@ -2336,6 +2502,26 @@ export default function AdminDashboard({ onLogout }) {
                   <span>{selectedEmployee.name || "N/A"}</span>
                 </div>
                 <div className="detail-row">
+                  <span>Mobile:</span>
+                  <span>{selectedEmployee.mobile || "N/A"}</span>
+                </div>
+                <div className="detail-row">
+                  <span>Email:</span>
+                  <span>{selectedEmployee.email || "N/A"}</span>
+                </div>
+                <div className="detail-row">
+                  <span>Joining Date:</span>
+                  <span>{selectedEmployee.joiningDate ? new Date(selectedEmployee.joiningDate).toLocaleDateString() : "N/A"}</span>
+                </div>
+                <div className="detail-row">
+                  <span>Photo URL:</span>
+                  <span className="detail-value detail-value-url">{formatEmployeePhotoUrl(selectedEmployee.photoUrl)}</span>
+                </div>
+                <div className="detail-row">
+                  <span>Last Updated:</span>
+                  <span>{selectedEmployee.updatedAt ? new Date(selectedEmployee.updatedAt).toLocaleString() : "N/A"}</span>
+                </div>
+                <div className="detail-row">
                   <span>Designation:</span>
                   <span>{selectedEmployee.designation || "N/A"}</span>
                 </div>
@@ -2355,10 +2541,24 @@ export default function AdminDashboard({ onLogout }) {
                   Scan this QR to open employee verification on the frontend route. It uses VITE_EMPLOYEE_VERIFY_URL when available and falls back to localhost frontend during local development.
                 </p>
                 <div className="employee-qr-preview">
-                  <img
-                    src={buildEmployeeQrUrl(selectedEmployee)}
-                    alt={`${selectedEmployee.name || selectedEmployee.empId} QR code`}
-                  />
+                  {!employeeQrFailed ? (
+                    <img
+                      src={employeeQrSrc || buildEmployeeQrUrl(selectedEmployee)}
+                      alt={`${selectedEmployee.name || selectedEmployee.empId} QR code`}
+                      onError={() => {
+                        const fallbackUrl = buildEmployeeQrFallbackUrl(selectedEmployee);
+
+                        if (fallbackUrl && employeeQrSrc !== fallbackUrl) {
+                          setEmployeeQrSrc(fallbackUrl);
+                          return;
+                        }
+
+                        setEmployeeQrFailed(true);
+                      }}
+                    />
+                  ) : (
+                    <p className="employee-qr-error">QR preview failed to load. Try reopening this modal or refresh the page.</p>
+                  )}
                 </div>
                 <div className="employee-qr-actions">
                   <button
@@ -2367,6 +2567,13 @@ export default function AdminDashboard({ onLogout }) {
                     onClick={() => navigator.clipboard?.writeText(selectedEmployee.empId)}
                   >
                     Copy Employee ID
+                  </button>
+                  <button
+                    type="button"
+                    className="export-btn"
+                    onClick={handleDownloadEmployeeQr}
+                  >
+                    Download QR
                   </button>
                 </div>
               </div>
