@@ -16,6 +16,14 @@ dist-ssr
 .env.*
 frontend/.env
 admin/.env
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.jks
+*.secret
+*.secrets
 
 # Editor directories and files
 .vscode/*

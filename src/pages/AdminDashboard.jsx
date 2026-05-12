@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { Link } from "react-router-dom";
 import {
   Users,
   Calendar,
@@ -22,11 +23,13 @@ import {
   Eye,
   Link as LinkIcon,
   Users as TeamIcon,
+  Database,
+  Building2,
 } from "lucide-react";
 import "./AdminDashboard.css";
 
 const ADMIN_ACTIVE_PAGE_KEY = "adminActivePage";
-const VALID_PAGES = new Set(["dashboard", "events", "employees", "participants", "analytics"]);
+const VALID_PAGES = new Set(["dashboard", "events", "employees", "institutes", "participants", "analytics", "cloner", "explorer"]);
 
 const extractNumber = (value, fallback = 0) => {
   const num = Number(value);
@@ -230,13 +233,7 @@ const buildEmployeeQrPayload = (employee) => {
 const buildEmployeeQrUrl = (employee) => {
   const payload = buildEmployeeQrPayload(employee);
   if (!payload) return "";
-  return `https://api.qrserver.com/v1/create-qr-code/?size=240x240&qzone=2&format=png&color=000000&bgcolor=FFFFFF&data=${encodeURIComponent(payload)}`;
-};
-
-const buildEmployeeQrFallbackUrl = (employee) => {
-  const payload = buildEmployeeQrPayload(employee);
-  if (!payload) return "";
-  return `https://quickchart.io/qr?size=240&margin=2&ecLevel=M&dark=000000&light=ffffff&text=${encodeURIComponent(payload)}`;
+  return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(payload)}`;
 };
 
 const getEmployeePhoto = (employee) => String(employee?.photoUrl || "").trim();
@@ -247,18 +244,6 @@ const getEmployeeEmploymentStatus = (employee) =>
 const isEmployeeTerminated = (employee) => getEmployeeEmploymentStatus(employee) === "terminated";
 const getEmployeeStatusLabel = (employee) =>
   isEmployeeTerminated(employee) ? "Terminated" : "Active";
-
-const formatEmployeePhotoUrl = (photoUrl) => {
-  const value = String(photoUrl || "").trim();
-  if (!value) return "N/A";
-
-  if (/^data:image\//i.test(value)) {
-    const sizeKb = Math.max(1, Math.round(value.length / 1024));
-    return `Embedded image data (${sizeKb} KB)`;
-  }
-
-  return value;
-};
 
 const inferDbNameFromUri = (uri) => {
   try {
@@ -291,6 +276,8 @@ export default function AdminDashboard({ onLogout }) {
   const [editingEventId, setEditingEventId] = useState(null);
   const [employees, setEmployees] = useState([]);
   const [employeesLoading, setEmployeesLoading] = useState(false);
+  const [institutes, setInstitutes] = useState([]);
+  const [institutesLoading, setInstitutesLoading] = useState(false);
   const [employeePage, setEmployeePage] = useState(1);
   const [employeeTotal, setEmployeeTotal] = useState(0);
   const [employeeTotalPages, setEmployeeTotalPages] = useState(1);
@@ -301,8 +288,6 @@ export default function AdminDashboard({ onLogout }) {
   const [employeeSort, setEmployeeSort] = useState("latest");
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [showEmployeeModal, setShowEmployeeModal] = useState(false);
-  const [employeeQrSrc, setEmployeeQrSrc] = useState("");
-  const [employeeQrFailed, setEmployeeQrFailed] = useState(false);
   const [showEntriesModal, setShowEntriesModal] = useState(false);
   const [entriesLoading, setEntriesLoading] = useState(false);
   const [selectedEventForEntries, setSelectedEventForEntries] = useState(null);
@@ -350,6 +335,15 @@ export default function AdminDashboard({ onLogout }) {
   }, [activePage, employeePage, employeeSearch, employeeSort]);
 
   useEffect(() => {
+    if (activePage !== "institutes") {
+      return undefined;
+    }
+
+    fetchInstitutes();
+    return undefined;
+  }, [activePage]);
+
+  useEffect(() => {
     localStorage.setItem(ADMIN_ACTIVE_PAGE_KEY, activePage);
   }, [activePage]);
 
@@ -366,45 +360,6 @@ export default function AdminDashboard({ onLogout }) {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, filterStatus, filterCategory, filterEvent]);
-
-  useEffect(() => {
-    if (!showEmployeeModal || !selectedEmployee) {
-      setEmployeeQrSrc("");
-      setEmployeeQrFailed(false);
-      return;
-    }
-
-    setEmployeeQrSrc(buildEmployeeQrUrl(selectedEmployee));
-    setEmployeeQrFailed(false);
-  }, [showEmployeeModal, selectedEmployee?._id, selectedEmployee?.empId]);
-
-  const handleDownloadEmployeeQr = async () => {
-    const qrUrl = employeeQrSrc || (selectedEmployee ? buildEmployeeQrUrl(selectedEmployee) : "");
-    const empId = String(selectedEmployee?.empId || "employee").trim() || "employee";
-
-    if (!qrUrl) {
-      showNotice("warning", "QR URL is not available yet.");
-      return;
-    }
-
-    try {
-      const response = await fetch(qrUrl);
-      if (!response.ok) throw new Error("QR fetch failed");
-
-      const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = objectUrl;
-      link.download = `${empId}-qr.png`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(objectUrl);
-    } catch (error) {
-      window.open(qrUrl, "_blank", "noopener,noreferrer");
-      showNotice("warning", "Direct download was blocked. Opened QR in a new tab.");
-    }
-  };
 
   const showNotice = (type, message) => {
     setNotice({
@@ -559,6 +514,29 @@ export default function AdminDashboard({ onLogout }) {
       showNotice("error", "Failed to load employees.");
     } finally {
       setEmployeesLoading(false);
+    }
+  };
+
+  const fetchInstitutes = async () => {
+    try {
+      setInstitutesLoading(true);
+      const token = localStorage.getItem("adminToken");
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/institutes`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const data = await parseResponseData(res);
+      if (handleUnauthorizedResponse(res)) return;
+      if (res.ok) {
+        setInstitutes(Array.isArray(data) ? data : []);
+      } else {
+        showNotice("error", data.msg || "Failed to load institutes.");
+      }
+    } catch (err) {
+      console.error(err);
+      showNotice("error", "Failed to load institutes.");
+    } finally {
+      setInstitutesLoading(false);
     }
   };
 
@@ -1567,11 +1545,35 @@ export default function AdminDashboard({ onLogout }) {
           </button>
           <button
             type="button"
+            onClick={() => setActivePage("institutes")}
+            className={`nav-item ${activePage === "institutes" ? "active" : ""}`}
+          >
+            <Building2 size={20} />
+            <span>Institute Management</span>
+          </button>
+          <button
+            type="button"
             onClick={() => setActivePage("analytics")}
             className={`nav-item ${activePage === "analytics" ? "active" : ""}`}
           >
             <TrendingUp size={20} />
             <span>Analytics</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActivePage("cloner")}
+            className={`nav-item ${activePage === "cloner" ? "active" : ""}`}
+          >
+            <Database size={20} />
+            <span>Data Cloner</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActivePage("explorer")}
+            className={`nav-item ${activePage === "explorer" ? "active" : ""}`}
+          >
+            <Database size={20} />
+            <span>Database Explorer</span>
           </button>
         </nav>
 
@@ -1590,8 +1592,11 @@ export default function AdminDashboard({ onLogout }) {
             {activePage === "dashboard" && "Admin Dashboard"}
             {activePage === "events" && "Events"}
             {activePage === "employees" && "Employee Management"}
+            {activePage === "institutes" && "Institute Management"}
             {activePage === "participants" && "Participants"}
             {activePage === "analytics" && "Analytics"}
+            {activePage === "cloner" && "Data Cloner"}
+            {activePage === "explorer" && "Database Explorer"}
           </h1>
           <div className="header-actions">
             <button
@@ -1600,6 +1605,10 @@ export default function AdminDashboard({ onLogout }) {
                   fetchEvents();
                 } else if (activePage === "employees") {
                   fetchEmployees();
+                } else if (activePage === "institutes") {
+                  fetchInstitutes();
+                } else if (activePage === "explorer") {
+                  handleLoadExplorer({ preventDefault: () => {} });
                 } else {
                   fetchData();
                   fetchStats();
@@ -1706,6 +1715,71 @@ export default function AdminDashboard({ onLogout }) {
                             <CheckCircle size={14} /> Checked In
                           </span>
                         </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {/* Events Section */}
+        {activePage === "institutes" && (
+          <section className="participants-section">
+            <div className="section-header">
+              <h2>Institute Accounts</h2>
+              <div className="header-actions">
+                <span className="total-badge">{institutes.length} total</span>
+                <Link to="/admin/create-institute" className="export-btn">
+                  <Building2 size={16} />
+                  Create Institute
+                </Link>
+              </div>
+            </div>
+
+            <div className="table-container">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Institute</th>
+                    <th>Type</th>
+                    <th>City</th>
+                    <th>Contact</th>
+                    <th>Login Email</th>
+                    <th>Verified</th>
+                    <th>Created</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {institutesLoading ? (
+                    <tr>
+                      <td colSpan="7" className="no-data">Loading institutes...</td>
+                    </tr>
+                  ) : institutes.length === 0 ? (
+                    <tr>
+                      <td colSpan="7" className="no-data">No institute accounts yet.</td>
+                    </tr>
+                  ) : (
+                    institutes.map((item) => (
+                      <tr key={item._id}>
+                        <td>
+                          <div className="name-cell">{item.instituteName}</div>
+                          <div className="email-subtext">{item.address}</div>
+                        </td>
+                        <td>{item.type}</td>
+                        <td>{item.city}</td>
+                        <td>
+                          <div>{item.contactPerson}</div>
+                          <div className="email-subtext">{item.phone}</div>
+                        </td>
+                        <td>{item.account?.email || "-"}</td>
+                        <td>
+                          <span className={`status ${item.verified ? "status-active" : "status-upcoming"}`}>
+                            {item.verified ? "Verified" : "Pending"}
+                          </span>
+                        </td>
+                        <td>{new Date(item.createdAt).toLocaleDateString()}</td>
                       </tr>
                     ))
                   )}
@@ -2529,6 +2603,275 @@ export default function AdminDashboard({ onLogout }) {
         </section>
         )}
 
+        {activePage === "cloner" && (
+          <section className="participants-section clone-section">
+            <div className="section-header">
+              <h2>Clone Old Database Into New Database</h2>
+              <span className="total-badge">Source to Destination Transfer</span>
+            </div>
+
+            <form className="event-form clone-form" onSubmit={handleCloneSubmit}>
+              <div className="clone-note">
+                This copies data from the old database URI into the new destination database URI. You can transfer only selected collections (entries) instead of the whole database.
+              </div>
+
+              <div className="clone-form-grid">
+                <div className="input-group">
+                  <label htmlFor="sourceUri">Old MongoDB URI</label>
+                  <input
+                    id="sourceUri"
+                    name="sourceUri"
+                    value={cloneForm.sourceUri}
+                    onChange={handleCloneInput}
+                    placeholder="mongodb+srv://user:pass@cluster.example.mongodb.net/"
+                    autoComplete="off"
+                    spellCheck="false"
+                  />
+                </div>
+
+                <div className="input-group">
+                  <label htmlFor="sourceDbName">Old Database Name (optional if in URI)</label>
+                  <input
+                    id="sourceDbName"
+                    name="sourceDbName"
+                    value={cloneForm.sourceDbName}
+                    onChange={handleCloneInput}
+                    placeholder="test"
+                    autoComplete="off"
+                  />
+                </div>
+
+                <div className="input-group">
+                  <label htmlFor="destinationUri">New MongoDB URI</label>
+                  <input
+                    id="destinationUri"
+                    name="destinationUri"
+                    value={cloneForm.destinationUri}
+                    onChange={handleCloneInput}
+                    placeholder="mongodb+srv://user:pass@cluster.example.mongodb.net/"
+                    autoComplete="off"
+                    spellCheck="false"
+                  />
+                </div>
+
+                <div className="input-group">
+                  <label htmlFor="destinationDbName">New Database Name (optional if in URI)</label>
+                  <input
+                    id="destinationDbName"
+                    name="destinationDbName"
+                    value={cloneForm.destinationDbName}
+                    onChange={handleCloneInput}
+                    placeholder="techmnhub"
+                    autoComplete="off"
+                  />
+                </div>
+
+                <div className="input-group">
+                  <label htmlFor="collections">Collections To Transfer (optional, comma-separated)</label>
+                  <input
+                    id="collections"
+                    name="collections"
+                    value={cloneForm.collections}
+                    onChange={handleCloneInput}
+                    placeholder="users"
+                    autoComplete="off"
+                  />
+                </div>
+              </div>
+
+              <div className="event-form-actions clone-actions">
+                <button type="submit" className="export-btn" disabled={cloneSubmitting}>
+                  <Database size={18} />
+                  {cloneSubmitting ? "Cloning..." : "Start Clone"}
+                </button>
+                <button
+                  type="button"
+                  className="export-btn"
+                  disabled={exportSubmitting}
+                  onClick={handleExportData}
+                >
+                  <Download size={18} />
+                  {exportSubmitting ? "Exporting..." : "Export Data JSON"}
+                </button>
+              </div>
+            </form>
+
+            {cloneResult && (
+              <div className="clone-result-card">
+                <div className="section-header compact-section-header">
+                  <h2>Last Clone Summary</h2>
+                  <span className="total-badge">
+                    {cloneResult.collections?.length || 0} collections copied
+                  </span>
+                </div>
+
+                <div className="clone-meta-grid">
+                  <div className="clone-meta-item">
+                    <span className="clone-meta-label">Source Database</span>
+                    <strong>{cloneResult.sourceDbName}</strong>
+                  </div>
+                  <div className="clone-meta-item">
+                    <span className="clone-meta-label">Destination Database</span>
+                    <strong>{cloneResult.destinationDbName}</strong>
+                  </div>
+                </div>
+
+                <div className="clone-collection-list">
+                  {(cloneResult.collections || []).map((collection) => (
+                    <div className="clone-collection-item" key={collection.collectionName}>
+                      <span>{collection.collectionName}</span>
+                      <strong>{collection.documents} document(s)</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {activePage === "explorer" && (
+          <section className="participants-section explorer-section">
+            <div className="section-header">
+              <h2>Database Explorer</h2>
+              <span className="total-badge">
+                {databaseOverview?.databases?.length || 0} database(s) loaded
+              </span>
+            </div>
+
+            <form className="event-form clone-form" onSubmit={handleLoadExplorer}>
+              <div className="clone-note">
+                Enter the old MongoDB URI here to inspect how many databases exist, which collections they contain, and preview collection documents from inside the admin panel.
+              </div>
+
+              <div className="clone-form-grid">
+                <div className="input-group">
+                  <label htmlFor="explorerSourceUri">Source MongoDB URI</label>
+                  <input
+                    id="explorerSourceUri"
+                    name="sourceUri"
+                    value={explorerForm.sourceUri}
+                    onChange={handleExplorerInput}
+                    placeholder="mongodb+srv://user:pass@cluster.example.mongodb.net/"
+                    autoComplete="off"
+                    spellCheck="false"
+                  />
+                </div>
+              </div>
+
+              <div className="event-form-actions clone-actions">
+                <button type="submit" className="export-btn" disabled={explorerLoading}>
+                  <Database size={18} />
+                  {explorerLoading ? "Loading..." : "Load Databases"}
+                </button>
+              </div>
+            </form>
+
+            {databaseOverview && (
+              <div className="explorer-summary-grid">
+                <div className="clone-meta-item">
+                  <span className="clone-meta-label">Visible Databases</span>
+                  <strong>{databaseOverview.databases?.length || 0}</strong>
+                </div>
+                <div className="clone-meta-item">
+                  <span className="clone-meta-label">System Databases</span>
+                  <strong>{databaseOverview.systemDatabases?.length || 0}</strong>
+                </div>
+                <div className="clone-meta-item">
+                  <span className="clone-meta-label">Total Databases</span>
+                  <strong>{databaseOverview.totalDatabases || 0}</strong>
+                </div>
+              </div>
+            )}
+
+            {databaseOverview?.allDatabases?.length > 0 && (
+              <div className="explorer-grid">
+                <div className="explorer-panel">
+                  <div className="section-header compact-section-header">
+                    <h2>Databases</h2>
+                  </div>
+                  <div className="explorer-list">
+                    {databaseOverview.allDatabases.map((database) => (
+                      <button
+                        type="button"
+                        key={database.name}
+                        className={`explorer-item ${selectedDatabaseName === database.name ? "active" : ""} ${database.isSystemDatabase ? "system" : ""}`}
+                        onClick={() => handleSelectDatabase(database.name)}
+                      >
+                        <div>
+                          <strong>{database.name}</strong>
+                          <span>{database.collections?.length || 0} collection(s)</span>
+                        </div>
+                        <span>{database.isSystemDatabase ? "System" : "Open"}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="explorer-panel">
+                  <div className="section-header compact-section-header">
+                    <h2>Collections</h2>
+                  </div>
+
+                  {!selectedDatabaseName && <div className="no-data">Select a database to view its collections.</div>}
+
+                  {selectedDatabaseName && (
+                    <div className="explorer-list">
+                      {(databaseOverview.allDatabases.find((item) => item.name === selectedDatabaseName)?.collections || []).map((collection) => (
+                        <button
+                          type="button"
+                          key={collection.name}
+                          className={`explorer-item collection-item ${selectedCollectionName === collection.name ? "active" : ""}`}
+                          onClick={() => handleSelectCollection(selectedDatabaseName, collection.name)}
+                        >
+                          <div>
+                            <strong>{collection.name}</strong>
+                            <span>{collection.documentCount} document(s)</span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {collectionPreview && (
+              <div className="clone-result-card explorer-preview-card">
+                <div className="section-header compact-section-header">
+                  <h2>Collection Preview</h2>
+                  <span className="total-badge">
+                    Showing {collectionPreview.returnedDocuments} of {collectionPreview.totalDocuments}
+                  </span>
+                </div>
+
+                <div className="clone-meta-grid">
+                  <div className="clone-meta-item">
+                    <span className="clone-meta-label">Database</span>
+                    <strong>{collectionPreview.databaseName}</strong>
+                  </div>
+                  <div className="clone-meta-item">
+                    <span className="clone-meta-label">Collection</span>
+                    <strong>{collectionPreview.collectionName}</strong>
+                  </div>
+                  <div className="clone-meta-item">
+                    <span className="clone-meta-label">Preview Limit</span>
+                    <strong>{collectionPreview.limit}</strong>
+                  </div>
+                </div>
+
+                <div className="preview-doc-list">
+                  {(collectionPreview.documents || []).map((doc, index) => (
+                    <div className="preview-doc-card" key={doc._id || index}>
+                      <div className="preview-doc-index">Document {index + 1}</div>
+                      <pre>{JSON.stringify(doc, null, 2)}</pre>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
         {activePage === "analytics" && (
           <section className="participants-section">
             <div className="section-header">
@@ -2612,7 +2955,7 @@ export default function AdminDashboard({ onLogout }) {
                 </div>
                 <div className="detail-row">
                   <span>Photo URL:</span>
-                  <span className="detail-value detail-value-url">{formatEmployeePhotoUrl(selectedEmployee.photoUrl)}</span>
+                  <span>{selectedEmployee.photoUrl || "N/A"}</span>
                 </div>
                 <div className="detail-row">
                   <span>Last Updated:</span>
@@ -2662,24 +3005,10 @@ export default function AdminDashboard({ onLogout }) {
                   Scan this QR to open employee verification on the frontend route. It uses VITE_EMPLOYEE_VERIFY_URL when available and falls back to localhost frontend during local development.
                 </p>
                 <div className="employee-qr-preview">
-                  {!employeeQrFailed ? (
-                    <img
-                      src={employeeQrSrc || buildEmployeeQrUrl(selectedEmployee)}
-                      alt={`${selectedEmployee.name || selectedEmployee.empId} QR code`}
-                      onError={() => {
-                        const fallbackUrl = buildEmployeeQrFallbackUrl(selectedEmployee);
-
-                        if (fallbackUrl && employeeQrSrc !== fallbackUrl) {
-                          setEmployeeQrSrc(fallbackUrl);
-                          return;
-                        }
-
-                        setEmployeeQrFailed(true);
-                      }}
-                    />
-                  ) : (
-                    <p className="employee-qr-error">QR preview failed to load. Try reopening this modal or refresh the page.</p>
-                  )}
+                  <img
+                    src={buildEmployeeQrUrl(selectedEmployee)}
+                    alt={`${selectedEmployee.name || selectedEmployee.empId} QR code`}
+                  />
                 </div>
                 <div className="employee-qr-actions">
                   <button
@@ -2688,13 +3017,6 @@ export default function AdminDashboard({ onLogout }) {
                     onClick={() => navigator.clipboard?.writeText(selectedEmployee.empId)}
                   >
                     Copy Employee ID
-                  </button>
-                  <button
-                    type="button"
-                    className="export-btn"
-                    onClick={handleDownloadEmployeeQr}
-                  >
-                    Download QR
                   </button>
                 </div>
               </div>
