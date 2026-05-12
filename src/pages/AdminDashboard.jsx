@@ -23,13 +23,12 @@ import {
   Eye,
   Link as LinkIcon,
   Users as TeamIcon,
-  Database,
   Building2,
 } from "lucide-react";
 import "./AdminDashboard.css";
 
 const ADMIN_ACTIVE_PAGE_KEY = "adminActivePage";
-const VALID_PAGES = new Set(["dashboard", "events", "employees", "institutes", "participants", "analytics", "cloner", "explorer"]);
+const VALID_PAGES = new Set(["dashboard", "events", "employees", "institutes", "participants", "analytics"]);
 
 const extractNumber = (value, fallback = 0) => {
   const num = Number(value);
@@ -1559,22 +1558,6 @@ export default function AdminDashboard({ onLogout }) {
             <TrendingUp size={20} />
             <span>Analytics</span>
           </button>
-          <button
-            type="button"
-            onClick={() => setActivePage("cloner")}
-            className={`nav-item ${activePage === "cloner" ? "active" : ""}`}
-          >
-            <Database size={20} />
-            <span>Data Cloner</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActivePage("explorer")}
-            className={`nav-item ${activePage === "explorer" ? "active" : ""}`}
-          >
-            <Database size={20} />
-            <span>Database Explorer</span>
-          </button>
         </nav>
 
         <div className="sidebar-footer">
@@ -1595,8 +1578,6 @@ export default function AdminDashboard({ onLogout }) {
             {activePage === "institutes" && "Institute Management"}
             {activePage === "participants" && "Participants"}
             {activePage === "analytics" && "Analytics"}
-            {activePage === "cloner" && "Data Cloner"}
-            {activePage === "explorer" && "Database Explorer"}
           </h1>
           <div className="header-actions">
             <button
@@ -1607,8 +1588,6 @@ export default function AdminDashboard({ onLogout }) {
                   fetchEmployees();
                 } else if (activePage === "institutes") {
                   fetchInstitutes();
-                } else if (activePage === "explorer") {
-                  handleLoadExplorer({ preventDefault: () => {} });
                 } else {
                   fetchData();
                   fetchStats();
