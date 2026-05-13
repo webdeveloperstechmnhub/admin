@@ -341,6 +341,7 @@ export default function AdminDashboard({ onLogout }) {
   const [selectedEventEntries, setSelectedEventEntries] = useState([]);
   const [eventForm, setEventForm] = useState(createEmptyEventForm());
   const [notice, setNotice] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [cloneForm, setCloneForm] = useState({
     sourceUri: "",
     sourceDbName: "",
@@ -1961,23 +1962,31 @@ export default function AdminDashboard({ onLogout }) {
           </h1>
           <div className="header-actions">
             <button
-              onClick={() => {
-                if (activePage === "events") {
-                  fetchEvents();
-                } else if (activePage === "employees") {
-                  fetchEmployees();
-                } else if (activePage === "institutes") {
-                  fetchInstitutes();
-                } else if (activePage === "student-management") {
-                  fetchStudentSignups();
-                } else {
-                  fetchData();
-                  fetchStats();
+              onClick={async () => {
+                setRefreshing(true);
+                try {
+                  if (activePage === "events") {
+                    await fetchEvents();
+                  } else if (activePage === "employees") {
+                    await fetchEmployees();
+                  } else if (activePage === "institutes") {
+                    await fetchInstitutes();
+                  } else if (activePage === "student-management") {
+                    await fetchStudentSignups();
+                  } else if (activePage === "session-bookings") {
+                    await fetchSessionBookings();
+                  } else {
+                    await fetchData();
+                    await fetchStats();
+                  }
+                } finally {
+                  setRefreshing(false);
                 }
               }}
+              disabled={refreshing}
               className="icon-btn"
             >
-              <RefreshCw size={18} />
+              <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
             </button>
             {activePage === "participants" && (
               <button onClick={exportToCSV} className="export-btn">
