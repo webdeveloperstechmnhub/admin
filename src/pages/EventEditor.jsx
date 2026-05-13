@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Eye, Plus, Save, Trash2 } from "lucide-react";
+import { motion } from "framer-motion";
+import { useNavigate, useParams } from "react-router-dom";
+import { Eye, Plus, Save, Trash2 } from "lucide-react";
 import EventAdminLayout from "../components/EventAdminLayout";
+import GoBackButton from "../components/GoBackButton";
 import { eventCategories, requestJson } from "../utils/eventApi";
 
 const draftKey = (id) => `techmnhub-event-draft-${id || "new"}`;
@@ -211,7 +213,7 @@ export default function EventEditor() {
       subtitle="Premium multi-step builder with autosave draft and live preview."
       actions={
         <div className="event-form-actions">
-          <Link className="event-btn ghost" to="/admin/events"><ArrowLeft size={16} /> Back</Link>
+          <GoBackButton to="/admin/events" label="Back" className="event-btn ghost" />
           <span>{lastSavedAt ? `Draft autosaved ${lastSavedAt.toLocaleTimeString()}` : "Draft autosave ready"}</span>
           <button className="event-btn" type="button" disabled={saving} onClick={() => save("draft")}><Save size={16} /> Save Draft</button>
           <button className="event-btn success" type="button" disabled={saving} onClick={() => save("published")}><Eye size={16} /> Publish</button>

@@ -83,16 +83,17 @@
 }
 
 .event-btn.ghost {
-  background: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  color: #e2e8f0;
 }
 
 .event-card,
 .event-panel {
-  background: rgba(255, 255, 255, 0.78);
-  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.12);
   border-radius: 8px;
-  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.25);
   backdrop-filter: blur(18px);
 }
 
@@ -132,11 +133,11 @@
 .event-select,
 .event-textarea {
   width: 100%;
-  border: 1px solid #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.24);
   border-radius: 8px;
   padding: 11px 12px;
-  background: rgba(255, 255, 255, 0.88);
-  color: #0f172a;
+  background: rgba(15, 23, 42, 0.86);
+  color: #e2e8f0;
   outline: none;
 }
 
@@ -355,7 +356,7 @@
   width: min(980px, 96vw);
   max-height: 88vh;
   overflow: auto;
-  background: #fff;
+  background: #0f172a;
   border-radius: 8px;
   padding: 18px;
   box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
@@ -376,10 +377,11 @@
 }
 
 .detail-section {
-  border: 1px solid rgba(148, 163, 184, 0.25);
+  border: 1px solid rgba(148, 163, 184, 0.18);
   border-radius: 8px;
   padding: 12px;
-  background: #f8fafc;
+  background: rgba(15, 23, 42, 0.86);
+  color: #e2e8f0;
 }
 
 @media (max-width: 1180px) {

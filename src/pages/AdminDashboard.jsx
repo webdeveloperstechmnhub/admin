@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import {
   Users,
   Calendar,
   CreditCard,
   CheckCircle,
+  Clock,
   Search,
   Filter,
   Download,
@@ -28,7 +29,7 @@ import {
 import "./AdminDashboard.css";
 
 const ADMIN_ACTIVE_PAGE_KEY = "adminActivePage";
-const VALID_PAGES = new Set(["dashboard", "events", "employees", "institutes", "participants", "analytics"]);
+const VALID_PAGES = new Set(["dashboard", "events", "employees", "institutes", "participants", "student-management", "session-bookings", "analytics"]);
 
 const extractNumber = (value, fallback = 0) => {
   const num = Number(value);
@@ -314,6 +315,8 @@ export default function AdminDashboard({ onLogout }) {
   const [employeesLoading, setEmployeesLoading] = useState(false);
   const [institutes, setInstitutes] = useState([]);
   const [institutesLoading, setInstitutesLoading] = useState(false);
+  const [studentSignups, setStudentSignups] = useState([]);
+  const [studentSignupsLoading, setStudentSignupsLoading] = useState(false);
   const [employeePage, setEmployeePage] = useState(1);
   const [employeeTotal, setEmployeeTotal] = useState(0);
   const [employeeTotalPages, setEmployeeTotalPages] = useState(1);
@@ -322,6 +325,14 @@ export default function AdminDashboard({ onLogout }) {
   const [employeeForm, setEmployeeForm] = useState(createEmptyEmployeeForm());
   const [employeeSearch, setEmployeeSearch] = useState("");
   const [employeeSort, setEmployeeSort] = useState("latest");
+  const [studentSignupSearch, setStudentSignupSearch] = useState("");
+  const [studentSignupStatus, setStudentSignupStatus] = useState("pending");
+  const [studentSignupSubmitting, setStudentSignupSubmitting] = useState(false);
+  const [sessionBookings, setSessionBookings] = useState([]);
+  const [sessionBookingsLoading, setSessionBookingsLoading] = useState(false);
+  const [sessionBookingFilter, setSessionBookingFilter] = useState("all");
+  const [sessionSearch, setSessionSearch] = useState("");
+  const [sessionSavingId, setSessionSavingId] = useState("");
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [showEmployeeModal, setShowEmployeeModal] = useState(false);
   const [showEntriesModal, setShowEntriesModal] = useState(false);
@@ -352,11 +363,19 @@ export default function AdminDashboard({ onLogout }) {
   const employeeItemsPerPage = 20;
 
   // Fetch data on mount
+  const location = useLocation();
+
   useEffect(() => {
     fetchData();
     fetchStats();
     fetchEvents();
   }, []);
+
+  useEffect(() => {
+    if (location.pathname === "/admin/session-bookings") {
+      setActivePage("session-bookings");
+    }
+  }, [location.pathname]);
 
   useEffect(() => {
     if (activePage !== "employees") {
@@ -378,6 +397,24 @@ export default function AdminDashboard({ onLogout }) {
     fetchInstitutes();
     return undefined;
   }, [activePage]);
+
+  useEffect(() => {
+    if (activePage !== "student-management") {
+      return undefined;
+    }
+
+    fetchStudentSignups();
+    return undefined;
+  }, [activePage]);
+
+  useEffect(() => {
+    if (activePage !== "session-bookings") {
+      return undefined;
+    }
+
+    fetchSessionBookings();
+    return undefined;
+  }, [activePage, sessionBookingFilter]);
 
   useEffect(() => {
     localStorage.setItem(ADMIN_ACTIVE_PAGE_KEY, activePage);
@@ -573,6 +610,186 @@ export default function AdminDashboard({ onLogout }) {
       showNotice("error", "Failed to load institutes.");
     } finally {
       setInstitutesLoading(false);
+    }
+  };
+
+  const fetchStudentSignups = async () => {
+    try {
+      setStudentSignupsLoading(true);
+      const token = localStorage.getItem("adminToken");
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/student-signups`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const data = await parseResponseData(res);
+      if (handleUnauthorizedResponse(res)) return;
+      if (res.ok) {
+        setStudentSignups(Array.isArray(data) ? data : []);
+      } else {
+        showNotice("error", data.msg || "Failed to load student signups.");
+      }
+    } catch (err) {
+      console.error(err);
+      showNotice("error", "Failed to load student signups.");
+    } finally {
+      setStudentSignupsLoading(false);
+    }
+  };
+
+  const fetchSessionBookings = async () => {
+    try {
+      setSessionBookingsLoading(true);
+      const token = localStorage.getItem("adminToken");
+      const params = new URLSearchParams();
+      if (sessionBookingFilter !== "all") {
+        params.set("status", sessionBookingFilter);
+      }
+      const endpoint = `${import.meta.env.VITE_API_URL}/sessions${params.toString() ? `?${params.toString()}` : ""}`;
+      const res = await fetch(endpoint, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const data = await parseResponseData(res);
+      if (handleUnauthorizedResponse(res)) return;
+      if (res.ok) {
+        setSessionBookings(Array.isArray(data.bookings) ? data.bookings : []);
+      } else {
+        showNotice("error", data.msg || "Failed to load session bookings.");
+      }
+    } catch (err) {
+      console.error(err);
+      showNotice("error", "Failed to load session bookings.");
+    } finally {
+      setSessionBookingsLoading(false);
+    }
+  };
+
+  const updateSessionBooking = async (id, payload) => {
+    if (!id) return;
+    setSessionSavingId(id);
+    try {
+      const token = localStorage.getItem("adminToken");
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/sessions/${encodeURIComponent(id)}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await parseResponseData(res);
+      if (handleUnauthorizedResponse(res)) return;
+      if (res.ok) {
+        setSessionBookings((current) => current.map((item) => (item._id === id ? data.booking : item)));
+        showNotice("success", "Booking updated successfully.");
+      } else {
+        showNotice("error", data.msg || "Failed to update booking.");
+      }
+    } catch (err) {
+      console.error(err);
+      showNotice("error", "Failed to update booking.");
+    } finally {
+      setSessionSavingId("");
+    }
+  };
+
+  const deleteSessionBooking = async (id) => {
+    if (!id) return;
+    setSessionSavingId(id);
+    try {
+      const token = localStorage.getItem("adminToken");
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/sessions/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await parseResponseData(res);
+      if (handleUnauthorizedResponse(res)) return;
+      if (res.ok) {
+        setSessionBookings((current) => current.filter((item) => item._id !== id));
+        showNotice("success", "Booking deleted successfully.");
+      } else {
+        showNotice("error", data.msg || "Failed to delete booking.");
+      }
+    } catch (err) {
+      console.error(err);
+      showNotice("error", "Failed to delete booking.");
+    } finally {
+      setSessionSavingId("");
+    }
+  };
+
+  const filteredSessionBookings = useMemo(() => {
+    const term = sessionSearch.trim().toLowerCase();
+    if (!term) return sessionBookings;
+    return sessionBookings.filter((booking) =>
+      [booking.topic, booking.instituteName, booking.department, booking.city, booking.contactName, booking.email, booking.phone, booking.mode, booking.audience]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(term)),
+    );
+  }, [sessionBookings, sessionSearch]);
+
+  const sessionBookingCounts = useMemo(() => {
+    const summary = {
+      total: sessionBookings.length,
+      pending: 0,
+      confirmed: 0,
+      rescheduled: 0,
+      completed: 0,
+      cancelled: 0,
+    };
+    sessionBookings.forEach((booking) => {
+      const status = String(booking.status || "pending").toLowerCase();
+      if (Object.prototype.hasOwnProperty.call(summary, status)) {
+        summary[status] += 1;
+      }
+    });
+    return summary;
+  }, [sessionBookings]);
+
+  const handleResetSessionFilters = () => {
+    setSessionSearch("");
+    setSessionBookingFilter("all");
+  };
+
+  const handleStudentSignupReview = async (signup, status) => {
+    if (!signup?._id || !status) {
+      return;
+    }
+
+    if (status === "rejected" && !window.confirm(`Reject signup request for ${signup.fullName}?`)) {
+      return;
+    }
+
+    try {
+      setStudentSignupSubmitting(true);
+      const token = localStorage.getItem("adminToken");
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/student-signups/${encodeURIComponent(signup._id)}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ status }),
+      });
+
+      const data = await parseResponseData(res);
+      if (handleUnauthorizedResponse(res)) return;
+      if (!res.ok) {
+        showNotice("error", data.msg || "Failed to update student signup.");
+        return;
+      }
+
+      await fetchStudentSignups();
+      showNotice("success", data.msg || `Student signup ${status}.`);
+    } catch (err) {
+      console.error(err);
+      showNotice("error", "Failed to update student signup.");
+    } finally {
+      setStudentSignupSubmitting(false);
     }
   };
 
@@ -1556,6 +1773,36 @@ export default function AdminDashboard({ onLogout }) {
 
   const eventList = useMemo(() => (Array.isArray(events) ? events : []), [events]);
 
+  const studentSignupCounts = useMemo(() => {
+    return studentSignups.reduce(
+      (accumulator, signup) => {
+        const status = String(signup?.status || "pending").toLowerCase();
+        accumulator.total += 1;
+        if (status === "approved") accumulator.approved += 1;
+        else if (status === "rejected") accumulator.rejected += 1;
+        else accumulator.pending += 1;
+        return accumulator;
+      },
+      { total: 0, pending: 0, approved: 0, rejected: 0 },
+    );
+  }, [studentSignups]);
+
+  const filteredStudentSignups = useMemo(() => {
+    const search = studentSignupSearch.trim().toLowerCase();
+
+    return studentSignups.filter((signup) => {
+      const status = String(signup?.status || "pending").toLowerCase();
+      const matchesStatus = studentSignupStatus === "all" ? true : status === studentSignupStatus;
+      if (!matchesStatus) return false;
+
+      if (!search) return true;
+
+      return [signup.fullName, signup.email, signup.phone, signup.college, signup.year, signup.city, signup.interests]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(search));
+    });
+  }, [studentSignups, studentSignupSearch, studentSignupStatus]);
+
   const filteredEmployees = useMemo(() => {
     return employees;
   }, [employees]);
@@ -1659,11 +1906,27 @@ export default function AdminDashboard({ onLogout }) {
           </button>
           <button
             type="button"
+            onClick={() => setActivePage("session-bookings")}
+            className={`nav-item ${activePage === "session-bookings" ? "active" : ""}`}
+          >
+            <Clock size={20} />
+            <span>Session Bookings</span>
+          </button>
+          <button
+            type="button"
             onClick={() => setActivePage("institutes")}
             className={`nav-item ${activePage === "institutes" ? "active" : ""}`}
           >
             <Building2 size={20} />
             <span>Institute Management</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActivePage("student-management")}
+            className={`nav-item ${activePage === "student-management" ? "active" : ""}`}
+          >
+            <UserCheck size={20} />
+            <span>Student Management</span>
           </button>
           <button
             type="button"
@@ -1692,6 +1955,8 @@ export default function AdminDashboard({ onLogout }) {
             {activePage === "employees" && "Employee Management"}
             {activePage === "institutes" && "Institute Management"}
             {activePage === "participants" && "Participants"}
+            {activePage === "student-management" && "Student Management"}
+            {activePage === "session-bookings" && "Session Bookings"}
             {activePage === "analytics" && "Analytics"}
           </h1>
           <div className="header-actions">
@@ -1703,6 +1968,8 @@ export default function AdminDashboard({ onLogout }) {
                   fetchEmployees();
                 } else if (activePage === "institutes") {
                   fetchInstitutes();
+                } else if (activePage === "student-management") {
+                  fetchStudentSignups();
                 } else {
                   fetchData();
                   fetchStats();
@@ -1874,6 +2141,335 @@ export default function AdminDashboard({ onLogout }) {
                           </span>
                         </td>
                         <td>{new Date(item.createdAt).toLocaleDateString()}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {activePage === "student-management" && (
+          <section className="participants-section">
+            <div className="section-header">
+              <div className="section-title-wrap">
+                <h2>Student Signups</h2>
+                <p className="section-subtitle">Review new requests, approve verified students, and keep rejected requests tracked.</p>
+              </div>
+              <span className="total-badge">{studentSignupCounts.pending} pending</span>
+            </div>
+
+            <div className="stats-grid">
+              <StatCard title="Total Requests" value={studentSignupCounts.total} icon={Users} color="blue" />
+              <StatCard title="Pending" value={studentSignupCounts.pending} icon={Clock} color="yellow" />
+              <StatCard title="Approved" value={studentSignupCounts.approved} icon={CheckCircle} color="green" />
+              <StatCard title="Rejected" value={studentSignupCounts.rejected} icon={XCircle} color="purple" />
+            </div>
+
+            <div className="filters-bar">
+              <div className="search-box">
+                <Search size={18} />
+                <input
+                  type="text"
+                  placeholder="Search by name, email, college, city, or interests..."
+                  value={studentSignupSearch}
+                  onChange={(e) => setStudentSignupSearch(e.target.value)}
+                />
+              </div>
+
+              <div className="filter-group">
+                <select
+                  className="filter-select"
+                  value={studentSignupStatus}
+                  onChange={(e) => setStudentSignupStatus(e.target.value)}
+                >
+                  <option value="pending">Pending</option>
+                  <option value="all">All statuses</option>
+                  <option value="approved">Approved</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+
+                <button
+                  type="button"
+                  className="filter-reset-btn"
+                  onClick={() => {
+                    setStudentSignupSearch("");
+                    setStudentSignupStatus("pending");
+                  }}
+                  disabled={!studentSignupSearch && studentSignupStatus === "pending"}
+                >
+                  <Filter size={14} />
+                  Reset
+                </button>
+              </div>
+            </div>
+
+            <div className="table-container">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Student</th>
+                    <th>Contact</th>
+                    <th>Institution</th>
+                    <th>Interests</th>
+                    <th>Status</th>
+                    <th>Submitted</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {studentSignupsLoading ? (
+                    <tr>
+                      <td colSpan="7" className="no-data">Loading student signups...</td>
+                    </tr>
+                  ) : filteredStudentSignups.length === 0 ? (
+                    <tr>
+                      <td colSpan="7" className="no-data">No student signups found.</td>
+                    </tr>
+                  ) : (
+                    filteredStudentSignups.map((signup) => (
+                      <tr key={signup._id}>
+                        <td>
+                          <div className="name-cell">{signup.fullName}</div>
+                          <div className="email-subtext">{signup.city || "—"}</div>
+                        </td>
+                        <td>
+                          <div>{signup.email}</div>
+                          <div className="email-subtext">{signup.phone}</div>
+                        </td>
+                        <td>
+                          <div>{signup.college}</div>
+                          <div className="email-subtext">{signup.year}</div>
+                        </td>
+                        <td>{signup.interests}</td>
+                        <td>
+                          <span className={`status-badge ${signup.status || "pending"}`}>
+                            {signup.status || "pending"}
+                          </span>
+                          {signup.reviewedAt ? (
+                            <div className="email-subtext">
+                              Reviewed {new Date(signup.reviewedAt).toLocaleDateString()}
+                            </div>
+                          ) : null}
+                        </td>
+                        <td>{signup.createdAt ? new Date(signup.createdAt).toLocaleString() : "N/A"}</td>
+                        <td>
+                          <div className="action-buttons">
+                            <button
+                              type="button"
+                              className="action-btn view"
+                              onClick={() => handleStudentSignupReview(signup, "approved")}
+                              disabled={studentSignupSubmitting || signup.status === "approved"}
+                              title="Approve signup"
+                            >
+                              <CheckCircle size={16} />
+                            </button>
+                            <button
+                              type="button"
+                              className="action-btn delete"
+                              onClick={() => handleStudentSignupReview(signup, "rejected")}
+                              disabled={studentSignupSubmitting || signup.status === "rejected"}
+                              title="Reject signup"
+                            >
+                              <XCircle size={16} />
+                            </button>
+                            <button
+                              type="button"
+                              className="action-btn view"
+                              onClick={() => handleStudentSignupReview(signup, "pending")}
+                              disabled={studentSignupSubmitting || signup.status === "pending"}
+                              title="Move back to pending"
+                            >
+                              <RefreshCw size={16} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {activePage === "session-bookings" && (
+          <section className="participants-section session-bookings-section">
+            <div className="section-header">
+              <div className="section-title-wrap">
+                <h2>Session Bookings</h2>
+                <p className="section-subtitle">Review and manage session bookings directly from the admin dashboard.</p>
+              </div>
+              <span className="total-badge">{sessionBookings.length} total</span>
+            </div>
+
+            <div className="stats-grid">
+              <div className="stat-card">
+                <div className="stat-card-icon">
+                  <Clock size={18} />
+                </div>
+                <div className="stat-card-content">
+                  <span>Total</span>
+                  <strong>{sessionBookingCounts.total}</strong>
+                </div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-card-icon">
+                  <Clock size={18} />
+                </div>
+                <div className="stat-card-content">
+                  <span>Pending</span>
+                  <strong>{sessionBookingCounts.pending}</strong>
+                </div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-card-icon">
+                  <CheckCircle size={18} />
+                </div>
+                <div className="stat-card-content">
+                  <span>Confirmed</span>
+                  <strong>{sessionBookingCounts.confirmed}</strong>
+                </div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-card-icon">
+                  <CheckCircle size={18} />
+                </div>
+                <div className="stat-card-content">
+                  <span>Completed</span>
+                  <strong>{sessionBookingCounts.completed}</strong>
+                </div>
+              </div>
+            </div>
+
+            <div className="filters-bar">
+              <div className="search-box">
+                <Search size={18} />
+                <input
+                  type="text"
+                  placeholder="Search bookings, institutes, contacts..."
+                  value={sessionSearch}
+                  onChange={(e) => setSessionSearch(e.target.value)}
+                />
+              </div>
+              <div className="filter-group">
+                <select
+                  className="filter-select"
+                  value={sessionBookingFilter}
+                  onChange={(e) => setSessionBookingFilter(e.target.value)}
+                >
+                  <option value="all">All statuses</option>
+                  <option value="pending">Pending</option>
+                  <option value="confirmed">Confirmed</option>
+                  <option value="rescheduled">Rescheduled</option>
+                  <option value="completed">Completed</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+                <button
+                  type="button"
+                  className="filter-reset-btn"
+                  onClick={handleResetSessionFilters}
+                  disabled={!sessionSearch && sessionBookingFilter === "all"}
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+
+            <div className="table-container">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Topic</th>
+                    <th>Institute</th>
+                    <th>Contact</th>
+                    <th>Schedule</th>
+                    <th>Status</th>
+                    <th>Notes</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sessionBookingsLoading ? (
+                    <tr>
+                      <td colSpan="7" className="no-data">Loading session bookings...</td>
+                    </tr>
+                  ) : !filteredSessionBookings.length ? (
+                    <tr>
+                      <td colSpan="7" className="no-data">No session bookings found.</td>
+                    </tr>
+                  ) : (
+                    filteredSessionBookings.map((booking) => (
+                      <tr key={booking._id}>
+                        <td>
+                          <div className="name-cell">{booking.topic || "-"}</div>
+                          <div className="email-subtext">{booking.mode || ""}</div>
+                        </td>
+                        <td>
+                          <div>{booking.instituteName || "-"}</div>
+                          <div className="email-subtext">{booking.department || ""}</div>
+                          <div className="email-subtext">{booking.city || ""}</div>
+                        </td>
+                        <td>
+                          <div>{booking.contactName || "-"}</div>
+                          <div className="email-subtext">{booking.email || ""}</div>
+                          <div className="email-subtext">{booking.phone || ""}</div>
+                        </td>
+                        <td>
+                          <div>{booking.date || "-"}</div>
+                          <div className="email-subtext">{booking.time || ""}</div>
+                        </td>
+                        <td>
+                          <span className={`status-badge ${booking.status || "pending"}`}>
+                            {booking.status || "pending"}
+                          </span>
+                        </td>
+                        <td>{booking.adminNotes || booking.notes || "-"}</td>
+                        <td>
+                          <div className="action-buttons">
+                            <button
+                              type="button"
+                              className="action-btn confirm"
+                              onClick={() => updateSessionBooking(booking._id, { status: "confirmed" })}
+                              disabled={sessionSavingId === booking._id}
+                            >
+                              Confirm
+                            </button>
+                            <button
+                              type="button"
+                              className="action-btn reschedule"
+                              onClick={() => updateSessionBooking(booking._id, { status: "rescheduled" })}
+                              disabled={sessionSavingId === booking._id}
+                            >
+                              Reschedule
+                            </button>
+                            <button
+                              type="button"
+                              className="action-btn complete"
+                              onClick={() => updateSessionBooking(booking._id, { status: "completed" })}
+                              disabled={sessionSavingId === booking._id}
+                            >
+                              Complete
+                            </button>
+                            <button
+                              type="button"
+                              className="action-btn cancel"
+                              onClick={() => updateSessionBooking(booking._id, { status: "cancelled" })}
+                              disabled={sessionSavingId === booking._id}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              className="action-btn delete"
+                              onClick={() => deleteSessionBooking(booking._id)}
+                              disabled={sessionSavingId === booking._id}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     ))
                   )}

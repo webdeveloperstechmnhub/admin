@@ -1,7 +1,8 @@
 import React from "react";
 import { Link, NavLink } from "react-router-dom";
-import { BarChart3, CalendarDays, LayoutDashboard, Plus, Users } from "lucide-react";
+import { BarChart3, CalendarDays, LayoutDashboard, Plus, Users, Clock } from "lucide-react";
 import "../pages/EventManagement.css";
+import GoBackButton from "./GoBackButton";
 
 export default function EventAdminLayout({ title, subtitle, actions, children }) {
   return (
@@ -17,6 +18,8 @@ export default function EventAdminLayout({ title, subtitle, actions, children })
           </div>
         </div>
 
+        <GoBackButton to="/admin" label="Back" />
+
         <nav className="event-admin-nav">
           <NavLink className="event-btn ghost" to="/admin">
             <LayoutDashboard size={16} /> Dashboard
@@ -26,6 +29,9 @@ export default function EventAdminLayout({ title, subtitle, actions, children })
           </NavLink>
           <NavLink className="event-btn ghost" to="/admin/event-registrations">
             <Users size={16} /> Registrations
+          </NavLink>
+          <NavLink className="event-btn ghost" to="/admin/session-bookings">
+            <Clock size={16} /> Session Bookings
           </NavLink>
           <NavLink className="event-btn primary" to="/admin/events/create">
             <Plus size={16} /> Add Event

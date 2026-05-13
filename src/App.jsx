@@ -42,6 +42,10 @@ function App() {
         element={isAuthenticated ? <EventRegistrations /> : <Navigate to="/admin/login" replace />}
       />
       <Route
+        path="/admin/session-bookings"
+        element={isAuthenticated ? <AdminDashboard onLogout={setIsAuthenticated} /> : <Navigate to="/admin/login" replace />}
+      />
+      <Route
         path="*"
         element={<Navigate to={isAuthenticated ? '/admin' : '/admin/login'} replace />}
       />

@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
 
 import { Copy, Sparkles, KeyRound, ShieldCheck } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import './AdminDashboard.css';
+import GoBackButton from '../components/GoBackButton';
 
 const instituteTypes = ['School', 'College', 'Coaching', 'Academy'];
 
@@ -100,7 +101,7 @@ export default function CreateInstitute() {
             <h1>Create Institute Account</h1>
             <p>Only admins can provision verified institute logins.</p>
           </div>
-          <Link className="create-institute-back" to="/admin">Back to Dashboard</Link>
+          <GoBackButton to="/admin" label="Back to Dashboard" className="create-institute-back" />
         </div>
 
         <motion.form

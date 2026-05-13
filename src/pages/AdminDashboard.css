@@ -908,7 +908,8 @@
 }
 
 /* Participants Section */
-.participants-section {
+.participants-section,
+.session-bookings-section {
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 24px;
@@ -1428,6 +1429,30 @@
   border: 1px solid rgba(245, 158, 11, 0.2);
 }
 
+.status-badge.confirmed {
+  background: rgba(34, 197, 94, 0.1);
+  color: var(--success);
+  border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+.status-badge.rescheduled {
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--primary);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.status-badge.completed {
+  background: rgba(168, 85, 247, 0.1);
+  color: #d8b4fe;
+  border: 1px solid rgba(168, 85, 247, 0.2);
+}
+
+.status-badge.cancelled {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
 .checkin-badge {
   display: inline-flex;
   align-items: center;
@@ -1473,14 +1498,39 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  background: none;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
+  border-radius: 10px;
   color: var(--gray);
+  font-size: 13px;
   cursor: pointer;
   transition: all 0.3s;
+}
+
+.action-btn.confirm:hover {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.3);
+  color: var(--success);
+}
+
+.action-btn.reschedule:hover {
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.3);
+  color: var(--primary);
+}
+
+.action-btn.complete:hover {
+  background: rgba(168, 85, 247, 0.12);
+  border-color: rgba(168, 85, 247, 0.3);
+  color: #d8b4fe;
+}
+
+.action-btn.cancel:hover {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: var(--danger);
 }
 
 .action-btn.view:hover {
