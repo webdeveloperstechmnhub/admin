@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
+
 import { Copy, Sparkles, KeyRound, ShieldCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import './AdminDashboard.css';

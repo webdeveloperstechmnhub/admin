@@ -52,6 +52,17 @@ const createTicketTypeRow = (overrides = {}) => ({
   ...overrides,
 });
 
+const createReferralCodeRow = (overrides = {}) => ({
+  id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  code: "",
+  discountType: "flat",
+  discountValue: "0",
+  maxUses: "0",
+  active: true,
+  usedCount: 0,
+  ...overrides,
+});
+
 const createEmptyEventForm = () => ({
   name: "",
   shortName: "",
@@ -74,6 +85,8 @@ const createEmptyEventForm = () => ({
   registrationLink: "",
   contactEmail: "",
   contactPhone: "",
+  referralCodes: [],
+  status: "published",
   ticketTypes: [
     createTicketTypeRow({
       name: "Pro Participation",
@@ -112,6 +125,19 @@ const mapEventToForm = (event) => ({
   registrationLink: event.registrationLink || "",
   contactEmail: event.contact?.email || "",
   contactPhone: event.contact?.phone || "",
+  status: event.status || "published",
+  referralCodes: Array.isArray(event.referralCodes)
+    ? event.referralCodes.map((referral) =>
+        createReferralCodeRow({
+          code: referral.code || "",
+          discountType: referral.discountType === "percent" ? "percent" : "flat",
+          discountValue: String(referral.discountValue ?? 0),
+          maxUses: String(referral.maxUses ?? 0),
+          active: referral.active !== false,
+          usedCount: referral.usedCount || 0,
+        }),
+      )
+    : [],
   ticketTypes:
     Array.isArray(event.ticketTypes) && event.ticketTypes.length > 0
       ? event.ticketTypes.map((ticketType) =>
@@ -176,6 +202,17 @@ const buildEventPayload = (eventForm) => {
       email: eventForm.contactEmail,
       phone: eventForm.contactPhone,
     },
+    status: eventForm.status || "published",
+    referralCodes: (eventForm.referralCodes || [])
+      .map((referral) => ({
+        code: String(referral.code || "").trim().toUpperCase(),
+        discountType: referral.discountType === "percent" ? "percent" : "flat",
+        discountValue: extractNumber(referral.discountValue, 0),
+        maxUses: extractNumber(referral.maxUses, 0),
+        active: referral.active !== false,
+        usedCount: extractNumber(referral.usedCount, 0),
+      }))
+      .filter((referral) => referral.code),
     ticketTypes: normalizedTicketTypes,
   };
 };
@@ -224,7 +261,7 @@ const buildEmployeeQrPayload = (employee) => {
     verifyUrl.searchParams.set("empId", empId);
     verifyUrl.searchParams.set("registrationId", empId);
     return verifyUrl.toString();
-  } catch (error) {
+  } catch {
     return `${fallbackVerifyPage}?empId=${encodeURIComponent(empId)}&registrationId=${encodeURIComponent(empId)}`;
   }
 };
@@ -374,7 +411,7 @@ export default function AdminDashboard({ onLogout }) {
     if (contentType.includes("application/json")) {
       try {
         return await res.json();
-      } catch (error) {
+      } catch {
         return {};
       }
     }
@@ -457,7 +494,7 @@ export default function AdminDashboard({ onLogout }) {
       const data = await parseResponseData(res);
       if (handleUnauthorizedResponse(res)) return;
       if (res.ok) {
-        setEvents(data);
+        setEvents(Array.isArray(data) ? data : Array.isArray(data.items) ? data.items : []);
       } else {
         showNotice("error", data.msg || "Failed to load events.");
       }
@@ -882,6 +919,31 @@ export default function AdminDashboard({ onLogout }) {
     }));
   };
 
+  const handleAddReferralCode = () => {
+    setEventForm((prev) => ({
+      ...prev,
+      referralCodes: [...(prev.referralCodes || []), createReferralCodeRow()],
+    }));
+  };
+
+  const handleReferralCodeChange = (referralId, field, value) => {
+    setEventForm((prev) => ({
+      ...prev,
+      referralCodes: (prev.referralCodes || []).map((referral) =>
+        referral.id === referralId
+          ? { ...referral, [field]: field === "code" ? String(value).toUpperCase() : value }
+          : referral,
+      ),
+    }));
+  };
+
+  const handleRemoveReferralCode = (referralId) => {
+    setEventForm((prev) => ({
+      ...prev,
+      referralCodes: (prev.referralCodes || []).filter((referral) => referral.id !== referralId),
+    }));
+  };
+
   const resetEventForm = () => {
     setEditingEventId(null);
     setEventForm(createEmptyEventForm());
@@ -1249,6 +1311,54 @@ export default function AdminDashboard({ onLogout }) {
     }
   };
 
+  const handlePublishEvent = async (eventId) => {
+    try {
+      const token = localStorage.getItem("adminToken");
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/events/${eventId}/publish`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const data = await parseResponseData(res);
+      if (handleUnauthorizedResponse(res)) return;
+      if (!res.ok) {
+        showNotice("error", data.msg || "Failed to publish event.");
+        return;
+      }
+
+      await fetchEvents();
+      showNotice("success", "Event published on frontend.");
+    } catch (err) {
+      console.error(err);
+      showNotice("error", "Failed to publish event.");
+    }
+  };
+
+  const handleUnpublishEvent = async (eventId) => {
+    if (!confirm("Unpublish this event from frontend?")) return;
+
+    try {
+      const token = localStorage.getItem("adminToken");
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/events/${eventId}/unpublish`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const data = await parseResponseData(res);
+      if (handleUnauthorizedResponse(res)) return;
+      if (!res.ok) {
+        showNotice("error", data.msg || "Failed to unpublish event.");
+        return;
+      }
+
+      await fetchEvents();
+      showNotice("success", "Event unpublished from frontend.");
+    } catch (err) {
+      console.error(err);
+      showNotice("error", "Failed to unpublish event.");
+    }
+  };
+
   // Handle check-in
   const handleCheckIn = async (userId) => {
     try {
@@ -1440,9 +1550,11 @@ export default function AdminDashboard({ onLogout }) {
 
   const eventOptions = useMemo(() => {
     const userEvents = users.map((u) => u.eventShortName || "").filter(Boolean);
-    const createdEvents = events.map((e) => e.shortName).filter(Boolean);
+    const createdEvents = (Array.isArray(events) ? events : []).map((e) => e.shortName).filter(Boolean);
     return [...new Set([...userEvents, ...createdEvents])];
   }, [users, events]);
+
+  const eventList = useMemo(() => (Array.isArray(events) ? events : []), [events]);
 
   const filteredEmployees = useMemo(() => {
     return employees;
@@ -1476,18 +1588,21 @@ export default function AdminDashboard({ onLogout }) {
   };
 
   // Stats cards
-  const StatCard = ({ title, value, icon: Icon, color, change }) => (
-    <div className="stat-card">
-      <div className="stat-info">
-        <span className="stat-label">{title}</span>
-        <span className="stat-value">{value}</span>
-        {change && <span className="stat-change">{change}</span>}
+  const StatCard = ({ title, value, icon, color, change }) => {
+    const CardIcon = icon;
+    return (
+      <div className="stat-card">
+        <div className="stat-info">
+          <span className="stat-label">{title}</span>
+          <span className="stat-value">{value}</span>
+          {change && <span className="stat-change">{change}</span>}
+        </div>
+        <div className={`stat-icon ${color}`}>
+          <CardIcon size={24} />
+        </div>
       </div>
-      <div className={`stat-icon ${color}`}>
-        <Icon size={24} />
-      </div>
-    </div>
-  );
+    );
+  };
 
   if (loading && !stats) {
     return (
@@ -1774,7 +1889,7 @@ export default function AdminDashboard({ onLogout }) {
           <div className="section-header">
             <h2>Events Management</h2>
             <span className="total-badge">
-              {events.filter((item) => item.status === "active").length} active / {events.length} total
+              {eventList.filter((item) => item.status === "active" || item.status === "published").length} active / {eventList.length} total
             </span>
           </div>
 
@@ -1890,6 +2005,15 @@ export default function AdminDashboard({ onLogout }) {
                 onChange={handleEventInput}
                 placeholder="Registration link (optional)"
               />
+              <select
+                name="status"
+                value={eventForm.status}
+                onChange={handleEventInput}
+              >
+                <option value="published">Published on frontend</option>
+                <option value="draft">Draft / hidden</option>
+                <option value="closed">Closed</option>
+              </select>
             </div>
             <div className="ticket-types-section">
               <div className="section-header compact-section-header">
@@ -1951,6 +2075,71 @@ export default function AdminDashboard({ onLogout }) {
                 ))}
               </div>
             </div>
+            <div className="ticket-types-section">
+              <div className="section-header compact-section-header">
+                <h2>Referral Codes</h2>
+                <button type="button" className="export-btn" onClick={handleAddReferralCode}>
+                  Add Referral Code
+                </button>
+              </div>
+              <div className="ticket-type-list">
+                {(eventForm.referralCodes || []).length === 0 ? (
+                  <div className="no-data">No referral codes added. Add one to enable discounts.</div>
+                ) : (
+                  eventForm.referralCodes.map((referral) => (
+                    <div className="ticket-type-card" key={referral.id}>
+                      <div className="ticket-type-grid">
+                        <input
+                          value={referral.code}
+                          onChange={(e) => handleReferralCodeChange(referral.id, "code", e.target.value)}
+                          placeholder="Referral code (e.g., TMH2026)"
+                        />
+                        <select
+                          value={referral.discountType}
+                          onChange={(e) => handleReferralCodeChange(referral.id, "discountType", e.target.value)}
+                        >
+                          <option value="flat">Flat discount</option>
+                          <option value="percent">Percent discount</option>
+                        </select>
+                        <input
+                          type="number"
+                          min="0"
+                          value={referral.discountValue}
+                          onChange={(e) => handleReferralCodeChange(referral.id, "discountValue", e.target.value)}
+                          placeholder="Discount value"
+                        />
+                        <input
+                          type="number"
+                          min="0"
+                          value={referral.maxUses}
+                          onChange={(e) => handleReferralCodeChange(referral.id, "maxUses", e.target.value)}
+                          placeholder="Max uses (0 = unlimited)"
+                        />
+                      </div>
+                      <div className="ticket-type-actions">
+                        <label className="referral-active-toggle">
+                          <input
+                            type="checkbox"
+                            checked={referral.active !== false}
+                            onChange={(e) => handleReferralCodeChange(referral.id, "active", e.target.checked)}
+                          />
+                          Active
+                        </label>
+                        <span className="event-description">Used {referral.usedCount || 0} time(s)</span>
+                        <button
+                          type="button"
+                          className="action-btn delete"
+                          onClick={() => handleRemoveReferralCode(referral.id)}
+                          title="Remove referral code"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
             <textarea
               name="description"
               value={eventForm.description}
@@ -2005,14 +2194,14 @@ export default function AdminDashboard({ onLogout }) {
             <p>Loading events...</p>
           ) : (
             <div className="events-grid">
-              {events.length === 0 ? (
+              {eventList.length === 0 ? (
                 <div className="no-data">No events created yet</div>
               ) : (
-                events.map((event) => (
+                eventList.map((event) => (
                   <div key={event._id} className="event-card">
                     <div className="event-details">
-                      <div className={`event-status status-${event.status === "active" ? "active" : "completed"}`}>
-                        {event.status}
+                      <div className={`event-status status-${event.status === "active" || event.status === "published" ? "active" : "completed"}`}>
+                        {event.status === "published" ? "published" : event.status}
                       </div>
                       <h3 className="event-name">{event.shortName}</h3>
                       <div className="event-meta compact-event-meta">
@@ -2041,7 +2230,16 @@ export default function AdminDashboard({ onLogout }) {
                         >
                           <Edit size={16} />
                         </button>
-                        {event.status === "active" ? (
+                        {event.status === "draft" ? (
+                          <button
+                            onClick={() => handlePublishEvent(event._id)}
+                            className="action-btn view"
+                            title="Publish Event"
+                            type="button"
+                          >
+                            <Eye size={16} />
+                          </button>
+                        ) : event.status === "active" || event.status === "published" ? (
                           <button
                             onClick={() => handleCloseEvent(event._id)}
                             className="action-btn delete"
@@ -2058,6 +2256,16 @@ export default function AdminDashboard({ onLogout }) {
                             type="button"
                           >
                             <RefreshCw size={16} />
+                          </button>
+                        )}
+                        {(event.status === "active" || event.status === "published") && (
+                          <button
+                            onClick={() => handleUnpublishEvent(event._id)}
+                            className="action-btn delete"
+                            title="Unpublish Event"
+                            type="button"
+                          >
+                            <XCircle size={16} />
                           </button>
                         )}
                         <button
