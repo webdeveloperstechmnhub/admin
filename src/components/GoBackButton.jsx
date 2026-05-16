@@ -31,6 +31,7 @@ const sharedMotion = {
   transition: hoverTransition,
 }
 
+const MotionLink = motion(Link)
 const GoBackButton = ({ to, onClick, label = 'Back', className = '' }) => {
   const content = (
     <>
@@ -40,7 +41,6 @@ const GoBackButton = ({ to, onClick, label = 'Back', className = '' }) => {
   )
 
   if (to) {
-    const MotionLink = motion(Link)
     return (
       <MotionLink to={to} className={className} style={buttonStyle} {...sharedMotion}>
         {content}

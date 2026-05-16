@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react';
 
 import { Copy, Sparkles, KeyRound, ShieldCheck } from 'lucide-react';
-import { motion } from 'framer-motion';
 import './AdminDashboard.css';
 import GoBackButton from '../components/GoBackButton';
 

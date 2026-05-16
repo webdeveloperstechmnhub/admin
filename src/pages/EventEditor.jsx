@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
+
 import { useNavigate, useParams } from "react-router-dom";
 import { Eye, Plus, Save, Trash2 } from "lucide-react";
 import EventAdminLayout from "../components/EventAdminLayout";

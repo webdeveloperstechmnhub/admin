@@ -130,6 +130,7 @@ export default function Events() {
                 <th>Category</th>
                 <th>Schedule</th>
                 <th>Passes</th>
+                <th>Referral Codes</th>
                 <th>Status</th>
                 <th>Seats</th>
                 <th>Actions</th>
@@ -161,6 +162,7 @@ export default function Events() {
                         <div>{event.timings || event.time}</div>
                       </td>
                       <td>{event.ticketTypes?.length || 0} passes</td>
+                      <td>{(event.referralCodes || []).filter((code) => code.active !== false).length}</td>
                       <td>
                         <span className={`status-pill ${event.status}`}>{event.status}</span>
                       </td>

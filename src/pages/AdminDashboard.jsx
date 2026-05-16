@@ -1903,7 +1903,7 @@ export default function AdminDashboard({ onLogout }) {
             className={`nav-item ${activePage === "participants" ? "active" : ""}`}
           >
             <Users size={20} />
-            <span>Participants</span>
+            <span>Event Registrations</span>
           </button>
           <button
             type="button"
