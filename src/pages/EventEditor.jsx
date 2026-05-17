@@ -1,61 +1,54 @@
 import React, { useEffect, useMemo, useState } from "react";
-
-import { useNavigate, useParams } from "react-router-dom";
-import { Eye, Plus, Save, Trash2 } from "lucide-react";
+import { useParams, useNavigate } from "react-router-dom";
+import { Plus, Save, Trash2, Eye } from "lucide-react";
 import EventAdminLayout from "../components/EventAdminLayout";
 import GoBackButton from "../components/GoBackButton";
-import { eventCategories, requestJson } from "../utils/eventApi";
+import { requestJson, eventCategories } from "../utils/eventApi";
 
-const draftKey = (id) => `techmnhub-event-draft-${id || "new"}`;
+const draftKey = (id) => `event-draft-${id || "new"}`;
 
 const emptyEvent = {
-  title: "TechMNHub Future Skills Summer Camp 2026",
-  subtitle: "Future-ready learning for school students",
-  slug: "future-skills-summer-camp-2026",
-  shortName: "Future Skills Summer Camp 2026",
-  date: "Coming Soon",
-  dateLabel: "Coming Soon",
-  comingSoon: true,
-  tagline: "Create. Code. Communicate. Compete.",
+  title: "",
+  subtitle: "",
+  slug: "",
+  shortName: "",
+  tagline: "",
   shortDescription: "",
   fullDescription: "",
   bannerImage: "",
   thumbnailImage: "",
-  gallery: [],
   promoVideoUrl: "",
+  gallery: [],
+  date: "",
+  dateLabel: "",
   startDate: "",
   endDate: "",
   timings: "",
+  category: "Technology",
   venue: "",
   googleMapsLink: "",
-  organizer: "TechMNHub",
+  organizer: "",
   contact: { phone: "", email: "" },
-  category: "Summer Camp",
-  eligibility: { minClass: "", maxClass: "", boardsAccepted: [], ageGroup: "" },
-  highlights: ["AI Image Generation", "Coding Basics", "Public Speaking", "Team Competitions"],
-  dailySchedules: [{ dayTitle: "Day 1", activities: ["Orientation"], sessionTimings: "10:00 AM - 1:00 PM", speakers: ["TechMNHub Mentor"] }],
-  ticketTypes: [
-    { name: "Basic Pass", price: 499, features: ["Camp access"], highlighted: false, total: 100, remainingSeats: 100 },
-    { name: "Smart Pass", price: 999, features: ["Camp access", "Certificate"], highlighted: true, total: 60, remainingSeats: 60 },
-    { name: "Premium Pass", price: 1499, features: ["Camp access", "Certificate", "Rewards kit"], highlighted: false, total: 30, remainingSeats: 30 },
-  ],
-  registrationSettings: { enabled: false, deadline: "", maxRegistrations: 190, waitingList: true, autoConfirmation: true },
-  referralCodes: [{ code: "TMH2026", discountType: "flat", discountValue: 100, active: true, maxUses: 0, usedCount: 0 }],
-  displayOptions: {
-    mediaTile: true,
-    statsTile: true,
-    eligibilityTile: true,
-    highlightsTile: true,
-    scheduleTile: true,
-    passesTile: true,
-    rewardsTile: true,
-    seoTile: true,
-    contactTile: true,
-    registrationTile: true,
+  comingSoon: false,
+  themeColor: "#D4AF37",
+  seatsAvailable: 0,
+  certificates: [],
+  highlights: [],
+  schedule: { sessions: [] },
+  ticketTypes: [],
+  registrationSettings: {
+    enabled: true,
+    deadline: "",
+    maxParticipants: 0,
+    requiresApproval: false,
   },
-  certificates: ["Participation Certificate"],
-  awards: ["Top performer award"],
-  gifts: ["Learning kit"],
+  referralCodes: [],
+  displayOptions: {
+    showParticipants: true,
+    showSchedule: true,
+    showTickets: true,
+    showRewards: true,
+  },
   rewardPrizes: ["Premium goodies"],
   seo: { metaTitle: "", metaDescription: "", keywords: ["summer camp", "future skills"], openGraphImage: "" },
   featured: true,
@@ -150,7 +143,7 @@ export default function EventEditor() {
     gallery: (form.gallery || []).map((item) => (typeof item === "string" ? { url: item, alt: "" } : item)).filter((item) => item.url),
     seo: { ...form.seo, keywords: splitText(listText(form.seo?.keywords)) },
     eligibility: { ...form.eligibility, boardsAccepted: splitText(listText(form.eligibility?.boardsAccepted)) },
-    ticketTypes: (form.ticketTypes || []).map((pass) => ({ ...pass, price: Number(pass.price || 0), total: Number(pass.total || 0), remainingSeats: Number(pass.remainingSeats || pass.total || 0), features: splitText(listText(pass.features)) })),
+    ticketTypes: (form.ticketTypes || []).map((pass) => ({ ...pass, price: Number(pass.price || 0), total: Number(pass.total || 0), remainingSeats: pass.remainingSeats !== undefined && pass.remainingSeats !== "" ? Number(pass.remainingSeats) : Number(pass.total || 0), features: splitText(listText(pass.features)) })),
     date: form.dateLabel || form.date,
     dateLabel: form.dateLabel || form.date,
     comingSoon: Boolean(form.comingSoon) || /coming\s*soon/i.test(form.dateLabel || form.date || ""),
@@ -284,6 +277,7 @@ export default function EventEditor() {
               <div className="event-field"><label>Organizer name</label><input className="event-input" value={form.organizer} onChange={(e) => update("organizer", e.target.value)} /></div>
               <div className="event-field"><label>Contact number</label><input className="event-input" value={form.contact?.phone || ""} onChange={(e) => updateNested("contact", "phone", e.target.value)} /></div>
               <div className="event-field"><label>Email</label><input className="event-input" value={form.contact?.email || ""} onChange={(e) => updateNested("contact", "email", e.target.value)} /></div>
+              <div className="event-field"><label>Seats Left</label><input type="number" className="event-input" min="0" value={form.seatsAvailable || 0} onChange={(e) => update("seatsAvailable", parseInt(e.target.value) || 0)} /></div>
               <label className="event-field"><input type="checkbox" checked={Boolean(form.comingSoon)} onChange={(e) => {
                 update("comingSoon", e.target.checked);
                 if (e.target.checked) updateNested("registrationSettings", "enabled", false);
@@ -303,129 +297,87 @@ export default function EventEditor() {
           {step === 4 && <div className="event-form-grid">{dynamicTextList("highlights", "Highlights", "AI Image Generation")}</div>}
 
           {step === 5 && (
-            <>
-              {(form.dailySchedules || []).map((item, index) => (
-                <div className="event-card schedule-card" key={`schedule-${index}`}>
-                  <div className="inline-actions"><strong>Day {index + 1}</strong><button className="event-btn danger" type="button" onClick={() => removeArrayItem("dailySchedules", index)}><Trash2 size={15} /></button></div>
-                  <div className="event-form-grid">
-                    <div className="event-field"><label>Day title</label><input className="event-input" value={item.dayTitle} onChange={(e) => updateArrayItem("dailySchedules", index, { ...item, dayTitle: e.target.value })} /></div>
-                    <div className="event-field"><label>Session timings</label><input className="event-input" value={item.sessionTimings} onChange={(e) => updateArrayItem("dailySchedules", index, { ...item, sessionTimings: e.target.value })} /></div>
-                    <div className="event-field"><label>Activities</label><input className="event-input" value={listText(item.activities)} onChange={(e) => updateArrayItem("dailySchedules", index, { ...item, activities: splitText(e.target.value) })} /></div>
-                    <div className="event-field"><label>Speaker names</label><input className="event-input" value={listText(item.speakers)} onChange={(e) => updateArrayItem("dailySchedules", index, { ...item, speakers: splitText(e.target.value) })} /></div>
+            <div className="event-form-grid">
+              <div className="event-field full">
+                <label>Schedule Sessions</label>
+                {(form.schedule?.sessions || []).map((session, index) => (
+                  <div className="dynamic-row" key={`session-${index}`}>
+                    <input className="event-input" placeholder="Session title" value={session.title || ""} onChange={(e) => updateArrayItem("schedule.sessions", index, { ...session, title: e.target.value })} />
+                    <button className="event-btn danger" type="button" onClick={() => removeArrayItem("schedule.sessions", index)}><Trash2 size={15} /></button>
                   </div>
-                </div>
-              ))}
-              <button className="event-btn ghost" type="button" onClick={() => addArrayItem("dailySchedules", { dayTitle: "", activities: [], sessionTimings: "", speakers: [] })}><Plus size={15} /> Add Day</button>
-            </>
+                ))}
+              </div>
+            </div>
           )}
 
           {step === 6 && (
-            <>
-              {(form.ticketTypes || []).map((pass, index) => (
-                <div className="event-card pass-card" key={`pass-${index}`}>
-                  <div className="inline-actions"><strong>{pass.name || `Pass ${index + 1}`}</strong><button className="event-btn danger" type="button" onClick={() => removeArrayItem("ticketTypes", index)}><Trash2 size={15} /></button></div>
-                  <div className="event-form-grid">
-                    <div className="event-field"><label>Pass name</label><input className="event-input" value={pass.name} onChange={(e) => updateArrayItem("ticketTypes", index, { ...pass, name: e.target.value })} /></div>
-                    <div className="event-field"><label>Price</label><input type="number" className="event-input" value={pass.price} onChange={(e) => updateArrayItem("ticketTypes", index, { ...pass, price: e.target.value })} /></div>
-                    <div className="event-field full"><label>Features</label><input className="event-input" value={listText(pass.features)} onChange={(e) => updateArrayItem("ticketTypes", index, { ...pass, features: splitText(e.target.value) })} /></div>
-                    <div className="event-field"><label>Seat limit</label><input type="number" className="event-input" value={pass.total} onChange={(e) => updateArrayItem("ticketTypes", index, { ...pass, total: e.target.value })} /></div>
-                    <div className="event-field"><label>Remaining seats</label><input type="number" className="event-input" value={pass.remainingSeats} onChange={(e) => updateArrayItem("ticketTypes", index, { ...pass, remainingSeats: e.target.value })} /></div>
-                    <label className="event-field"><input type="checkbox" checked={Boolean(pass.highlighted)} onChange={(e) => updateArrayItem("ticketTypes", index, { ...pass, highlighted: e.target.checked })} /> Highlighted pass</label>
+            <div className="event-form-grid">
+              <div className="event-field full">
+                <label>Ticket Types / Passes</label>
+                {(form.ticketTypes || []).map((pass, index) => (
+                  <div className="pass-card" key={`pass-${index}`}>
+                    <label className="event-field-inline">Name: <input className="event-input" placeholder="Pass name" value={pass.name || ""} onChange={(e) => updateArrayItem("ticketTypes", index, { ...pass, name: e.target.value })} /></label>
+                    <label className="event-field-inline">Price: <input className="event-input" type="number" placeholder="Price" value={pass.price || 0} onChange={(e) => updateArrayItem("ticketTypes", index, { ...pass, price: e.target.value })} /></label>
+                    <label className="event-field-inline">Desc: <input className="event-input" placeholder="Description" value={pass.description || ""} onChange={(e) => updateArrayItem("ticketTypes", index, { ...pass, description: e.target.value })} /></label>
+                    <label className="event-field-inline">Total Seats: <input className="event-input" type="number" placeholder="Total seats" value={pass.total || 0} onChange={(e) => updateArrayItem("ticketTypes", index, { ...pass, total: e.target.value })} /></label>
+                    <label className="event-field-inline">Seats Left: <input className="event-input" type="number" placeholder="Seats Left" value={pass.remainingSeats !== undefined ? pass.remainingSeats : pass.total || 0} onChange={(e) => updateArrayItem("ticketTypes", index, { ...pass, remainingSeats: e.target.value })} /></label>
+                    <button className="event-btn danger" type="button" onClick={() => removeArrayItem("ticketTypes", index)}><Trash2 size={15} /></button>
                   </div>
-                </div>
-              ))}
-              <button className="event-btn ghost" type="button" onClick={() => addArrayItem("ticketTypes", { name: "", price: 0, features: [], highlighted: false, total: 0, remainingSeats: 0 })}><Plus size={15} /> Add Pass</button>
-            </>
+                ))}
+                <button className="event-btn ghost" type="button" onClick={() => addArrayItem("ticketTypes", { name: "", price: 0, description: "", total: 0, remainingSeats: 0, features: [], highlighted: false, appliesTo: "All", key: `pass-${Date.now()}` })}><Plus size={15} /> Add Pass</button>
+              </div>
+            </div>
           )}
 
           {step === 7 && (
             <div className="event-form-grid">
-              <label className="event-field"><input type="checkbox" checked={Boolean(form.registrationSettings?.enabled)} disabled={Boolean(form.comingSoon)} onChange={(e) => updateNested("registrationSettings", "enabled", e.target.checked)} /> Enable registration</label>
-              <label className="event-field"><input type="checkbox" checked={Boolean(form.registrationSettings?.waitingList)} onChange={(e) => updateNested("registrationSettings", "waitingList", e.target.checked)} /> Waiting list</label>
-              <label className="event-field"><input type="checkbox" checked={Boolean(form.registrationSettings?.autoConfirmation)} onChange={(e) => updateNested("registrationSettings", "autoConfirmation", e.target.checked)} /> Auto confirmation</label>
+              <label className="event-field"><input type="checkbox" checked={form.registrationSettings?.enabled} onChange={(e) => updateNested("registrationSettings", "enabled", e.target.checked)} /> Enable Registration</label>
               <div className="event-field"><label>Registration deadline</label><input type="date" className="event-input" value={form.registrationSettings?.deadline || ""} onChange={(e) => updateNested("registrationSettings", "deadline", e.target.value)} /></div>
-              <div className="event-field"><label>Maximum registrations</label><input type="number" className="event-input" value={form.registrationSettings?.maxRegistrations || 0} onChange={(e) => updateNested("registrationSettings", "maxRegistrations", e.target.value)} /></div>
-              {form.comingSoon && <div className="event-field full"><span className="status-pill draft">Coming Soon blocks registrations automatically.</span></div>}
+              <div className="event-field"><label>Max participants</label><input type="number" className="event-input" min="0" value={form.registrationSettings?.maxParticipants || 0} onChange={(e) => updateNested("registrationSettings", "maxParticipants", parseInt(e.target.value) || 0)} /></div>
+              <label className="event-field"><input type="checkbox" checked={form.registrationSettings?.requiresApproval} onChange={(e) => updateNested("registrationSettings", "requiresApproval", e.target.checked)} /> Requires approval</label>
             </div>
           )}
 
           {step === 8 && (
-            <>
-              {(form.referralCodes || []).map((item, index) => (
-                <div className="event-card pass-card" key={`referral-${index}`}>
-                  <div className="inline-actions"><strong>{item.code || `Referral ${index + 1}`}</strong><button className="event-btn danger" type="button" onClick={() => removeArrayItem("referralCodes", index)}><Trash2 size={15} /></button></div>
-                  <div className="event-form-grid">
-                    <div className="event-field"><label>Referral code</label><input className="event-input" value={item.code || ""} onChange={(e) => updateArrayItem("referralCodes", index, { ...item, code: e.target.value.toUpperCase() })} /></div>
-                    <div className="event-field"><label>Discount type</label><select className="event-select" value={item.discountType || "flat"} onChange={(e) => updateArrayItem("referralCodes", index, { ...item, discountType: e.target.value })}><option value="flat">Flat amount</option><option value="percent">Percent</option></select></div>
-                    <div className="event-field"><label>Discount value</label><input type="number" className="event-input" value={item.discountValue || 0} onChange={(e) => updateArrayItem("referralCodes", index, { ...item, discountValue: e.target.value })} /></div>
-                    <div className="event-field"><label>Maximum uses</label><input type="number" className="event-input" value={item.maxUses || 0} onChange={(e) => updateArrayItem("referralCodes", index, { ...item, maxUses: e.target.value })} /></div>
-                    <div className="event-field"><label>Used count</label><input type="number" className="event-input" value={item.usedCount || 0} readOnly /></div>
-                    <label className="event-field"><input type="checkbox" checked={item.active !== false} onChange={(e) => updateArrayItem("referralCodes", index, { ...item, active: e.target.checked })} /> Active</label>
+            <div className="event-form-grid">
+              <div className="event-field full">
+                <label>Referral Codes</label>
+                {(form.referralCodes || []).map((code, index) => (
+                  <div className="dynamic-row" key={`code-${index}`}>
+                    <input className="event-input" placeholder="Code (auto-uppercase)" value={code.code || ""} onChange={(e) => updateArrayItem("referralCodes", index, { ...code, code: e.target.value })} />
+                    <input className="event-input" type="number" placeholder="Discount %" value={code.discountValue || 0} onChange={(e) => updateArrayItem("referralCodes", index, { ...code, discountValue: e.target.value })} />
+                    <button className="event-btn danger" type="button" onClick={() => removeArrayItem("referralCodes", index)}><Trash2 size={15} /></button>
                   </div>
-                </div>
-              ))}
-              <button className="event-btn ghost" type="button" onClick={() => addArrayItem("referralCodes", { code: "", discountType: "flat", discountValue: 0, active: true, maxUses: 0, usedCount: 0 })}><Plus size={15} /> Add Referral Code</button>
-            </>
+                ))}
+                <button className="event-btn ghost" type="button" onClick={() => addArrayItem("referralCodes", { code: "", discountValue: 0, maxUses: 0, usedCount: 0, active: true })}><Plus size={15} /> Add Code</button>
+              </div>
+            </div>
           )}
 
           {step === 9 && (
             <div className="event-form-grid">
-              {Object.entries({
-                mediaTile: "Media tile",
-                statsTile: "Stats tile",
-                eligibilityTile: "Eligibility tile",
-                highlightsTile: "Highlights tile",
-                scheduleTile: "Schedule tile",
-                passesTile: "Passes tile",
-                rewardsTile: "Rewards tile",
-                seoTile: "SEO tile",
-                contactTile: "Contact tile",
-                registrationTile: "Registration tile",
-              }).map(([key, label]) => (
-                <label className="event-field" key={key}>
-                  <input type="checkbox" checked={form.displayOptions?.[key] !== false} onChange={(e) => updateDisplayOption(key, e.target.checked)} /> {label}
-                </label>
-              ))}
+              <label className="event-field"><input type="checkbox" checked={form.displayOptions?.showParticipants} onChange={(e) => updateDisplayOption("showParticipants", e.target.checked)} /> Show Participants</label>
+              <label className="event-field"><input type="checkbox" checked={form.displayOptions?.showSchedule} onChange={(e) => updateDisplayOption("showSchedule", e.target.checked)} /> Show Schedule</label>
+              <label className="event-field"><input type="checkbox" checked={form.displayOptions?.showTickets} onChange={(e) => updateDisplayOption("showTickets", e.target.checked)} /> Show Tickets</label>
+              <label className="event-field"><input type="checkbox" checked={form.displayOptions?.showRewards} onChange={(e) => updateDisplayOption("showRewards", e.target.checked)} /> Show Rewards</label>
+              <div className="event-field"><label>Theme Color</label><input type="color" className="event-input" value={form.themeColor || "#D4AF37"} onChange={(e) => update("themeColor", e.target.value)} /></div>
             </div>
           )}
 
-          {step === 10 && <div className="event-form-grid">{dynamicTextList("certificates", "Certificates", "Participation Certificate")}{dynamicTextList("awards", "Awards", "Top Innovator")}{dynamicTextList("gifts", "Gifts", "Learning Kit")}{dynamicTextList("rewardPrizes", "Prizes", "Premium goodies")}</div>}
+          {step === 10 && (
+            <div className="event-form-grid">
+              {dynamicTextList("rewardPrizes", "Reward Prizes", "Prize description")}
+            </div>
+          )}
 
           {step === 11 && (
             <div className="event-form-grid">
-              <div className="event-field"><label>Meta title</label><input className="event-input" value={form.seo?.metaTitle || ""} onChange={(e) => updateNested("seo", "metaTitle", e.target.value)} /></div>
-              <div className="event-field"><label>Open Graph image</label><input className="event-input" value={form.seo?.openGraphImage || ""} onChange={(e) => updateNested("seo", "openGraphImage", e.target.value)} /></div>
+              <div className="event-field full"><label>Meta title</label><input className="event-input" value={form.seo?.metaTitle || ""} onChange={(e) => updateNested("seo", "metaTitle", e.target.value)} /></div>
               <div className="event-field full"><label>Meta description</label><textarea className="event-textarea" value={form.seo?.metaDescription || ""} onChange={(e) => updateNested("seo", "metaDescription", e.target.value)} /></div>
-              <div className="event-field full"><label>Keywords</label><input className="event-input" value={listText(form.seo?.keywords)} onChange={(e) => updateNested("seo", "keywords", splitText(e.target.value))} /></div>
-              <label className="event-field"><input type="checkbox" checked={Boolean(form.featured)} onChange={(e) => update("featured", e.target.checked)} /> Featured event</label>
+              <div className="event-field full"><label>Keywords</label><input className="event-input" placeholder="Comma-separated" value={listText(form.seo?.keywords)} onChange={(e) => updateNested("seo", "keywords", splitText(e.target.value))} /></div>
             </div>
           )}
-
-          <div className="pagination-row">
-            <button className="event-btn ghost" type="button" disabled={step === 0} onClick={() => setStep((prev) => prev - 1)}>Previous</button>
-            <span>{step + 1} / {steps.length}</span>
-            <button className="event-btn primary" type="button" disabled={step === steps.length - 1} onClick={() => setStep((prev) => prev + 1)}>Next</button>
-          </div>
         </section>
-
-        <aside className="event-card event-preview">
-          <h2>Live Preview</h2>
-          <div className="preview-banner">
-            {form.bannerImage && <img src={form.bannerImage} alt={form.title} />}
-            <strong>{form.title}</strong>
-            <span>{form.tagline || form.subtitle}</span>
-          </div>
-          <div className="preview-list">
-            <span className={`status-pill ${form.comingSoon ? "draft" : form.status}`}>{form.comingSoon ? "coming soon" : form.status}</span>
-            <strong>{form.category}</strong>
-            <span>{form.dateLabel || form.date || form.startDate || "Start date"}{form.endDate ? ` to ${form.endDate}` : ""}</span>
-            <span>{form.timings || "Timings TBA"}</span>
-            <span>{form.venue || "Venue TBA"}</span>
-            <strong>Live registration counter: {form.registrationSettings?.maxRegistrations || "Unlimited"}</strong>
-            {form.comingSoon && <span className="seat-warning">Registrations will not start until Coming Soon is off.</span>}
-            {(form.ticketTypes || []).map((pass) => <span key={pass.name}>{pass.name}: Rs {pass.price} {Number(pass.remainingSeats) <= 10 && Number(pass.remainingSeats) > 0 ? "Low seats" : ""}</span>)}
-          </div>
-        </aside>
       </main>
     </EventAdminLayout>
   );

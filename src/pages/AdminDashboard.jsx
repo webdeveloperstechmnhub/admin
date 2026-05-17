@@ -172,6 +172,7 @@ const buildEventPayload = (eventForm) => {
       name: String(ticketType.name || "").trim(),
       price: extractNumber(ticketType.price, 0),
       total: extractNumber(ticketType.total, 0),
+      remainingSeats: ticketType.remainingSeats !== undefined && ticketType.remainingSeats !== "" ? extractNumber(ticketType.remainingSeats, 0) : extractNumber(ticketType.total, 0),
       appliesTo: ["Participation", "Visitor", "All"].includes(ticketType.appliesTo)
         ? ticketType.appliesTo
         : "All",

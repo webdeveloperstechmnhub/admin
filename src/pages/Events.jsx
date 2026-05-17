@@ -132,7 +132,8 @@ export default function Events() {
                 <th>Passes</th>
                 <th>Referral Codes</th>
                 <th>Status</th>
-                <th>Seats</th>
+                <th>Total Seats</th>
+                <th>Seats Left</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -167,6 +168,7 @@ export default function Events() {
                         <span className={`status-pill ${event.status}`}>{event.status}</span>
                       </td>
                       <td className={hasSeatWarning ? "seat-warning" : ""}>{seatLimit || "Unlimited"}</td>
+                      <td>{event.seatsAvailable ?? (seatLimit > 0 ? seatLimit - (event.registrationsCount || 0) : "Unlimited")}</td>
                       <td>
                         <div className="inline-actions">
                           <Link className="event-btn ghost" to={`/admin/events/${event._id}/edit`}>
