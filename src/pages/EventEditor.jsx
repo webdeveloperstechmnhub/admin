@@ -32,6 +32,7 @@ const emptyEvent = {
   comingSoon: false,
   themeColor: "#D4AF37",
   seatsAvailable: 0,
+  seatsLeft: null,
   certificates: [],
   highlights: [],
   schedule: { sessions: [] },
@@ -334,6 +335,7 @@ export default function EventEditor() {
               <label className="event-field"><input type="checkbox" checked={form.registrationSettings?.enabled} onChange={(e) => updateNested("registrationSettings", "enabled", e.target.checked)} /> Enable Registration</label>
               <div className="event-field"><label>Registration deadline</label><input type="date" className="event-input" value={form.registrationSettings?.deadline || ""} onChange={(e) => updateNested("registrationSettings", "deadline", e.target.value)} /></div>
               <div className="event-field"><label>Max participants</label><input type="number" className="event-input" min="0" value={form.registrationSettings?.maxParticipants || 0} onChange={(e) => updateNested("registrationSettings", "maxParticipants", parseInt(e.target.value) || 0)} /></div>
+              <div className="event-field"><label>Seats Left (Optional - overrides default)</label><input type="number" className="event-input" min="0" placeholder="Leave empty to auto-calculate" value={form.seatsLeft || ""} onChange={(e) => setForm({ ...form, seatsLeft: e.target.value ? parseInt(e.target.value) : null })} /></div>
               <label className="event-field"><input type="checkbox" checked={form.registrationSettings?.requiresApproval} onChange={(e) => updateNested("registrationSettings", "requiresApproval", e.target.checked)} /> Requires approval</label>
             </div>
           )}

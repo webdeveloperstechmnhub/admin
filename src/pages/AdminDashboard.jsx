@@ -87,6 +87,7 @@ const createEmptyEventForm = () => ({
   contactEmail: "",
   contactPhone: "",
   referralCodes: [],
+  seatsLeft: null,
   status: "published",
   ticketTypes: [
     createTicketTypeRow({
@@ -164,6 +165,7 @@ const mapEventToForm = (event) => ({
             appliesTo: "Visitor",
           }),
         ],
+  seatsLeft: event.seatsLeft || null,
 });
 
 const buildEventPayload = (eventForm) => {
@@ -216,6 +218,7 @@ const buildEventPayload = (eventForm) => {
       }))
       .filter((referral) => referral.code),
     ticketTypes: normalizedTicketTypes,
+    seatsLeft: eventForm.seatsLeft || null,
   };
 };
 
@@ -2586,6 +2589,14 @@ export default function AdminDashboard({ onLogout }) {
                 value={eventForm.registrationDeadline}
                 onChange={handleEventInput}
                 placeholder="Registration deadline"
+              />
+              <input
+                name="seatsLeft"
+                type="number"
+                value={eventForm.seatsLeft || ""}
+                onChange={(e) => setEventForm({ ...eventForm, seatsLeft: e.target.value ? parseInt(e.target.value) : null })}
+                placeholder="Seats Left (optional - leave empty to auto-calculate)"
+                min="0"
               />
               <input
                 name="refundPolicy"
