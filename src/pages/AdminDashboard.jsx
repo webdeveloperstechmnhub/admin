@@ -29,7 +29,7 @@ import {
 import "./AdminDashboard.css";
 
 const ADMIN_ACTIVE_PAGE_KEY = "adminActivePage";
-const VALID_PAGES = new Set(["dashboard", "events", "employees", "institutes", "participants", "student-management", "session-bookings", "analytics"]);
+const VALID_PAGES = new Set(["dashboard", "events", "employees", "institutes", "participants", "student-management", "session-bookings", "analytics", "ambassadors"]);
 
 const extractNumber = (value, fallback = 0) => {
   const num = Number(value);
@@ -312,6 +312,11 @@ export default function AdminDashboard({ onLogout }) {
   const [selectedUser, setSelectedUser] = useState(null);
   const [showUserModal, setShowUserModal] = useState(false);
   const [events, setEvents] = useState([]);
+  const [ambassadorApps, setAmbassadorApps] = useState([]);
+  const [ambassadorAppsLoading, setAmbassadorAppsLoading] = useState(false);
+  const [activeAmbassadors, setActiveAmbassadors] = useState([]);
+  const [activeAmbassadorsLoading, setActiveAmbassadorsLoading] = useState(false);
+  const [ambassadorTab, setAmbassadorTab] = useState("applications");
   const [eventsLoading, setEventsLoading] = useState(false);
   const [eventSubmitting, setEventSubmitting] = useState(false);
   const [editingEventId, setEditingEventId] = useState(null);
@@ -409,6 +414,16 @@ export default function AdminDashboard({ onLogout }) {
     }
 
     fetchStudentSignups();
+    return undefined;
+  }, [activePage]);
+
+  useEffect(() => {
+    if (activePage !== "ambassadors") {
+      return undefined;
+    }
+
+    fetchAmbassadorApps();
+    fetchActiveAmbassadors();
     return undefined;
   }, [activePage]);
 
@@ -615,6 +630,124 @@ export default function AdminDashboard({ onLogout }) {
       showNotice("error", "Failed to load institutes.");
     } finally {
       setInstitutesLoading(false);
+    }
+  };
+
+  const fetchAmbassadorApps = async () => {
+    try {
+      setAmbassadorAppsLoading(true);
+      const token = localStorage.getItem("adminToken");
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/ambassadors/applications`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await parseResponseData(res);
+      if (handleUnauthorizedResponse(res)) return;
+      if (res.ok) {
+        setAmbassadorApps(data.applications || []);
+      } else {
+        showNotice("error", data.msg || "Failed to load ambassador applications.");
+      }
+    } catch (err) {
+      console.error(err);
+      showNotice("error", "Failed to load ambassador applications.");
+    } finally {
+      setAmbassadorAppsLoading(false);
+    }
+  };
+
+  const fetchActiveAmbassadors = async () => {
+    try {
+      setActiveAmbassadorsLoading(true);
+      const token = localStorage.getItem("adminToken");
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/ambassadors/active`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await parseResponseData(res);
+      if (handleUnauthorizedResponse(res)) return;
+      if (res.ok) {
+        setActiveAmbassadors(data.ambassadors || []);
+      } else {
+        showNotice("error", data.msg || "Failed to load active ambassadors.");
+      }
+    } catch (err) {
+      console.error(err);
+      showNotice("error", "Failed to load active ambassadors.");
+    } finally {
+      setActiveAmbassadorsLoading(false);
+    }
+  };
+
+  const handleApproveAmbassador = async (applicationId) => {
+    if (!confirm("Are you sure you want to approve this student ambassador?")) return;
+    try {
+      const token = localStorage.getItem("adminToken");
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/ambassadors/approve`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ applicationId })
+      });
+      const data = await parseResponseData(res);
+      if (handleUnauthorizedResponse(res)) return;
+      if (res.ok) {
+        showNotice("success", "Ambassador application approved successfully!");
+        await fetchAmbassadorApps();
+      } else {
+        showNotice("error", data.msg || "Failed to approve ambassador.");
+      }
+    } catch (err) {
+      console.error(err);
+      showNotice("error", "Failed to approve ambassador.");
+    }
+  };
+
+  const handleRejectAmbassador = async (applicationId) => {
+    if (!confirm("Are you sure you want to reject this ambassador application?")) return;
+    try {
+      const token = localStorage.getItem("adminToken");
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/ambassadors/reject`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ applicationId })
+      });
+      const data = await parseResponseData(res);
+      if (handleUnauthorizedResponse(res)) return;
+      if (res.ok) {
+        showNotice("success", "Ambassador application rejected.");
+        await fetchAmbassadorApps();
+      } else {
+        showNotice("error", data.msg || "Failed to reject application.");
+      }
+    } catch (err) {
+      console.error(err);
+      showNotice("error", "Failed to reject application.");
+    }
+  };
+
+  const handleTerminateAmbassador = async (ambassadorId) => {
+    if (!confirm("Are you sure you want to terminate this student ambassador? This will remove their active profile and reset their application status to rejected.")) return;
+    try {
+      const token = localStorage.getItem("adminToken");
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/ambassadors/${ambassadorId}/terminate`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await parseResponseData(res);
+      if (handleUnauthorizedResponse(res)) return;
+      if (res.ok) {
+        showNotice("success", "Student ambassador terminated successfully.");
+        await Promise.all([fetchAmbassadorApps(), fetchActiveAmbassadors()]);
+      } else {
+        showNotice("error", data.msg || "Failed to terminate ambassador.");
+      }
+    } catch (err) {
+      console.error(err);
+      showNotice("error", "Failed to terminate ambassador.");
     }
   };
 
@@ -1935,6 +2068,14 @@ export default function AdminDashboard({ onLogout }) {
           </button>
           <button
             type="button"
+            onClick={() => setActivePage("ambassadors")}
+            className={`nav-item ${activePage === "ambassadors" ? "active" : ""}`}
+          >
+            <Award size={20} />
+            <span>Ambassadors</span>
+          </button>
+          <button
+            type="button"
             onClick={() => setActivePage("analytics")}
             className={`nav-item ${activePage === "analytics" ? "active" : ""}`}
           >
@@ -1962,6 +2103,7 @@ export default function AdminDashboard({ onLogout }) {
             {activePage === "participants" && "Participants"}
             {activePage === "student-management" && "Student Management"}
             {activePage === "session-bookings" && "Session Bookings"}
+            {activePage === "ambassadors" && "Ambassador Management"}
             {activePage === "analytics" && "Analytics"}
           </h1>
           <div className="header-actions">
@@ -1977,6 +2119,8 @@ export default function AdminDashboard({ onLogout }) {
                     await fetchInstitutes();
                   } else if (activePage === "student-management") {
                     await fetchStudentSignups();
+                  } else if (activePage === "ambassadors") {
+                    await Promise.all([fetchAmbassadorApps(), fetchActiveAmbassadors()]);
                   } else if (activePage === "session-bookings") {
                     await fetchSessionBookings();
                   } else {
@@ -2304,6 +2448,77 @@ export default function AdminDashboard({ onLogout }) {
                 </tbody>
               </table>
             </div>
+          </section>
+        )}
+
+        {activePage === "ambassadors" && (
+          <section className="participants-section">
+            <div className="section-header">
+              <div className="section-title-wrap">
+                <h2>Ambassador Management</h2>
+                <p className="section-subtitle">Track, approve, and terminate Student Ambassadors from the portal.</p>
+              </div>
+              <span className="total-badge">
+                {ambassadorTab === "applications" ? `${ambassadorApps.length} pending` : `${activeAmbassadors.length} active`}
+              </span>
+            </div>
+
+            {/* Tab Toggles */}
+            <div className="filters-bar" style={{ marginBottom: "24px", padding: "8px 12px", background: "rgba(255,255,255,0.02)", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.05)" }}>
+              <div className="filter-group" style={{ display: "flex", gap: "12px" }}>
+                <button type="button" onClick={() => setAmbassadorTab("applications")} className={`filter-reset-btn ${ambassadorTab === "applications" ? "active" : ""}`} style={{ padding: "8px 20px", borderRadius: "8px", border: ambassadorTab === "applications" ? "1px solid #D4AF37" : "1px solid transparent", backgroundColor: ambassadorTab === "applications" ? "rgba(212,175,55,0.12)" : "transparent", color: ambassadorTab === "applications" ? "#D4AF37" : "#888888", fontWeight: "700", fontSize: "13px", cursor: "pointer", transition: "all 0.3s ease", boxShadow: ambassadorTab === "applications" ? "0 0 10px rgba(212, 175, 55, 0.15)" : "none" }}>
+                  Pending Applications ({ambassadorApps.length})
+                </button>
+                <button type="button" onClick={() => setAmbassadorTab("active")} className={`filter-reset-btn ${ambassadorTab === "active" ? "active" : ""}`} style={{ padding: "8px 20px", borderRadius: "8px", border: ambassadorTab === "active" ? "1px solid #D4AF37" : "1px solid transparent", backgroundColor: ambassadorTab === "active" ? "rgba(212,175,55,0.12)" : "transparent", color: ambassadorTab === "active" ? "#D4AF37" : "#888888", fontWeight: "700", fontSize: "13px", cursor: "pointer", transition: "all 0.3s ease", boxShadow: ambassadorTab === "active" ? "0 0 10px rgba(212, 175, 55, 0.15)" : "none" }}>
+                  Active Ambassadors ({activeAmbassadors.length})
+                </button>
+              </div>
+            </div>
+
+            {ambassadorTab === "applications" ? (
+              <div className="table-container">
+                <table className="data-table">
+                  <thead><tr><th>Photo / Avatar</th><th>Name</th><th>School & City</th><th>Contact Info</th><th>Why Join?</th><th>Skills / Interests</th><th>Actions</th></tr></thead>
+                  <tbody>
+                    {ambassadorAppsLoading ? (<tr><td colSpan="7" className="no-data">Loading applications...</td></tr>)
+                    : ambassadorApps.length === 0 ? (<tr><td colSpan="7" className="no-data">No pending applications found.</td></tr>)
+                    : ambassadorApps.map((app) => (
+                      <tr key={app._id}>
+                        <td>{app.photo ? (<img src={app.photo} alt={app.fullName} style={{ width: 48, height: 48, borderRadius: "50%", objectFit: "cover", border: "1px solid rgba(212,175,55,0.35)" }} />) : (<div style={{ width: 48, height: 48, borderRadius: "50%", border: "1px solid rgba(212,175,55,0.35)", background: "#0D0D0D", display: "grid", placeItems: "center", fontSize: "18px" }}>{app.avatar === 'avatar_cyber_punk' && '👾'}{app.avatar === 'avatar_star_cadet' && '🚀'}{app.avatar === 'avatar_mech_ai' && '🤖'}{app.avatar === 'avatar_future_legend' && '👑'}{!app.avatar && '👤'}</div>)}</td>
+                        <td><div className="name-cell">{app.fullName}</div><div className="email-subtext">Class: {app.className}</div></td>
+                        <td><div>{app.schoolName || app.schoolId?.name || "Unknown School"}</div><div className="email-subtext">{app.city}</div></td>
+                        <td><div>📱 {app.mobileNumber}</div><div style={{ color: '#00E5FF', fontSize: '11px', marginTop: '2px' }}><a href={`mailto:${app.email}`} style={{ textDecoration: 'none', color: 'inherit' }}>📧 {app.email}</a></div><div className="email-subtext">Parent: {app.parentNumber}</div><div className="email-subtext">Insta: @{app.instagramId}</div></td>
+                        <td className="max-w-xs text-xs whitespace-pre-wrap">{app.why}</td>
+                        <td className="max-w-xs text-xs whitespace-pre-wrap">{app.skills}</td>
+                        <td><div style={{ display: "flex", gap: "8px" }}><button type="button" onClick={() => handleApproveAmbassador(app._id)} style={{ padding: "6px 12px", borderRadius: "8px", background: "#16a34a", color: "white", fontWeight: "bold", fontSize: "12px", border: "none", cursor: "pointer" }}>Approve</button><button type="button" onClick={() => handleRejectAmbassador(app._id)} style={{ padding: "6px 12px", borderRadius: "8px", background: "#dc2626", color: "white", fontWeight: "bold", fontSize: "12px", border: "none", cursor: "pointer" }}>Reject</button></div></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="table-container">
+                <table className="data-table">
+                  <thead><tr><th>Photo / Avatar</th><th>Name</th><th>School & City</th><th>Contact Info</th><th>Referral Code</th><th>Points</th><th>Badges</th><th>Actions</th></tr></thead>
+                  <tbody>
+                    {activeAmbassadorsLoading ? (<tr><td colSpan="8" className="no-data">Loading active ambassadors...</td></tr>)
+                    : activeAmbassadors.length === 0 ? (<tr><td colSpan="8" className="no-data">No active ambassadors found.</td></tr>)
+                    : activeAmbassadors.map((amb) => (
+                      <tr key={amb._id}>
+                        <td>{amb.photo ? (<img src={amb.photo} alt={amb.fullName} style={{ width: 48, height: 48, borderRadius: "50%", objectFit: "cover", border: "1px solid rgba(212,175,55,0.35)" }} />) : (<div style={{ width: 48, height: 48, borderRadius: "50%", border: "1px solid rgba(212,175,55,0.35)", background: "#0D0D0D", display: "grid", placeItems: "center", fontSize: "18px" }}>{amb.avatar === 'avatar_cyber_punk' && '👾'}{amb.avatar === 'avatar_star_cadet' && '🚀'}{amb.avatar === 'avatar_mech_ai' && '🤖'}{amb.avatar === 'avatar_future_legend' && '👑'}{!amb.avatar && '👤'}</div>)}</td>
+                        <td><div className="name-cell">{amb.fullName}</div><div className="email-subtext">Class: {amb.className}</div></td>
+                        <td><div>{amb.schoolId?.name || "Unknown School"}</div><div className="email-subtext">{amb.city}</div></td>
+                        <td><div style={{ color: '#00E5FF', fontSize: '11px', fontWeight: 'bold' }}><a href={`mailto:${amb.email}`} style={{ textDecoration: 'none', color: 'inherit' }}>📧 {amb.email}</a></div><div className="email-subtext">📱 {amb.mobileNumber}</div><div className="email-subtext">Insta: @{amb.instagramId}</div></td>
+                        <td><span className="id-badge" style={{ textTransform: 'none', fontSize: '11px', letterSpacing: '0.5px' }}>{amb.referralCode || "N/A"}</span></td>
+                        <td><strong style={{ color: '#F0DB92', fontSize: '16px' }}>{amb.points}</strong></td>
+                        <td><div style={{ display: "flex", flexWrap: "wrap", gap: "4px", maxWidth: "160px" }}>{amb.badges && amb.badges.length > 0 ? amb.badges.map((badge, idx) => (<span key={idx} style={{ padding: "2px 8px", borderRadius: "4px", background: "#111", border: "1px solid rgba(212,175,55,0.2)", fontSize: "9px", color: "#F0DB92", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px" }}>{badge}</span>)) : (<span style={{ color: '#555555', fontSize: '11px', fontStyle: 'italic' }}>No badges</span>)}</div></td>
+                        <td><button type="button" onClick={() => handleTerminateAmbassador(amb._id)} style={{ padding: "6px 12px", borderRadius: "8px", background: "#dc2626", color: "white", fontWeight: "bold", fontSize: "12px", border: "none", cursor: "pointer", textTransform: "uppercase", letterSpacing: "0.5px" }}>Terminate</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </section>
         )}
 

@@ -4,6 +4,7 @@ import './AdminDashboard.css';
 export default function AdminLogin({ onLogin }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [operatorName, setOperatorName] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
@@ -14,7 +15,7 @@ export default function AdminLogin({ onLogin }) {
       const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email, password, operatorName })
       });
 
       const data = await res.json();
@@ -43,6 +44,17 @@ export default function AdminLogin({ onLogin }) {
         </div>
 
         <form onSubmit={handleSubmit} className="login-form">
+          <div className="input-group">
+            <label>Operator Name</label>
+            <input
+              type="text"
+              placeholder="Your Name (e.g. John Doe)"
+              value={operatorName}
+              onChange={(e) => setOperatorName(e.target.value)}
+              required
+            />
+          </div>
+
           <div className="input-group">
             <label>Email Address</label>
             <input
