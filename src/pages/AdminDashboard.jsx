@@ -1730,7 +1730,7 @@ export default function AdminDashboard({ onLogout }) {
       if (res.ok) {
         await fetchData();
         await fetchStats();
-        showNotice("success", "Participant checked in successfully.");
+        showNotice("success", data.msg || "Attendance marked successfully.");
       } else {
         showNotice("error", data.msg || "Failed to check in participant.");
       }
@@ -3549,23 +3549,29 @@ export default function AdminDashboard({ onLogout }) {
                         </span>
                       </td>
                       <td>
-                        {user.checkedIn ? (
-                          <span className="checkin-badge checked">
-                            <CheckCircle size={14} />
-                            {user.checkInTime
-                              ? new Date(user.checkInTime).toLocaleTimeString()
-                              : "Checked"}
-                          </span>
-                        ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {user.checkedIn ? (
+                            <span className="checkin-badge checked">
+                              <CheckCircle size={14} />
+                              {user.checkInTime
+                                ? new Date(user.checkInTime).toLocaleTimeString()
+                                : "Checked"}
+                            </span>
+                          ) : (
+                            <span className="checkin-badge" style={{ background: "rgba(245, 158, 11, 0.12)", color: "#f59e0b" }}>
+                              <UserX size={14} />
+                              Not checked in
+                            </span>
+                          )}
                           <button
                             onClick={() => handleCheckIn(user._id)}
                             className="checkin-btn"
                             disabled={user.paymentStatus !== "paid"}
                           >
                             <UserCheck size={14} />
-                            Check In
+                            {user.checkedIn ? "Mark Again" : "Check In"}
                           </button>
-                        )}
+                        </div>
                       </td>
                       <td>
                         <div className="action-buttons">

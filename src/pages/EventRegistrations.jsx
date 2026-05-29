@@ -46,6 +46,15 @@ export default function EventRegistrations() {
     await loadData();
   };
 
+  const markAttendance = async (id) => {
+    try {
+      await requestJson(`/admin/users/${id}/checkin?allowEarlyCheckin=1`, { method: "PUT" });
+      await loadData();
+    } catch (err) {
+      alert(err.message || "Failed to mark attendance");
+    }
+  };
+
   const exportData = async (format) => {
     await downloadFile(`/events/registrations/export?${query}&format=${format}`, `event-registrations.${format}`);
   };
@@ -109,7 +118,7 @@ export default function EventRegistrations() {
                     <div className="inline-actions">
                       <button className="event-btn success" type="button" onClick={() => updateRegistration(item._id, { registrationStatus: "approved" })}><UserCheck size={15} /></button>
                       <button className="event-btn danger" type="button" onClick={() => updateRegistration(item._id, { registrationStatus: "rejected" })}><UserX size={15} /></button>
-                      <button className="event-btn ghost" type="button" onClick={() => updateRegistration(item._id, { checkedIn: !item.checkedIn })}><QrCode size={15} /></button>
+                      <button className="event-btn ghost" type="button" onClick={() => markAttendance(item._id)} title="Mark attendance"><QrCode size={15} /></button>
                       <button className="event-btn ghost" type="button" onClick={() => setSelected(item)}>View</button>
                     </div>
                   </td>
