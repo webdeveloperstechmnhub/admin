@@ -232,6 +232,7 @@ const createEmptyEmployeeForm = () => ({
   designation: "",
   department: "",
   description: "",
+  adminAccess: false,
 });
 
 const mapEmployeeToForm = (employee) => ({
@@ -244,6 +245,7 @@ const mapEmployeeToForm = (employee) => ({
   designation: employee.designation || "",
   department: employee.department || "",
   description: employee.description || "",
+  adminAccess: Boolean(employee.adminAccess),
 });
 
 const buildEmployeeQrPayload = (employee) => {
@@ -376,9 +378,16 @@ export default function AdminDashboard({ onLogout }) {
   const location = useLocation();
 
   useEffect(() => {
+    const token = localStorage.getItem("adminToken");
+    if (!token) {
+      setLoading(false);
+      return undefined;
+    }
+
     fetchData();
     fetchStats();
     fetchEvents();
+    return undefined;
   }, []);
 
   useEffect(() => {
@@ -1310,10 +1319,10 @@ export default function AdminDashboard({ onLogout }) {
   };
 
   const handleEmployeeInput = (e) => {
-    const { name, value } = e.target;
+    const { name, type, value, checked } = e.target;
     setEmployeeForm((prev) => ({
       ...prev,
-      [name]: value,
+      [name]: type === "checkbox" ? checked : value,
     }));
   };
 
@@ -3186,6 +3195,15 @@ export default function AdminDashboard({ onLogout }) {
                   onChange={handleEmployeeInput}
                   placeholder="Department"
                 />
+                <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "var(--text-secondary)" }}>
+                  <input
+                    name="adminAccess"
+                    type="checkbox"
+                    checked={Boolean(employeeForm.adminAccess)}
+                    onChange={handleEmployeeInput}
+                  />
+                  Admin panel access
+                </label>
               </div>
               <div className="employee-photo-upload-row">
                 <input
@@ -3282,6 +3300,7 @@ export default function AdminDashboard({ onLogout }) {
                       <th>Joining Date</th>
                       <th>Designation</th>
                       <th>Department</th>
+                      <th>Access</th>
                       <th>Description</th>
                       <th>Updated</th>
                       <th>Actions</th>
@@ -3290,7 +3309,7 @@ export default function AdminDashboard({ onLogout }) {
                   <tbody>
                     {filteredEmployees.length === 0 ? (
                       <tr>
-                        <td colSpan="12" className="no-data">
+                        <td colSpan="13" className="no-data">
                           No employees found.
                         </td>
                       </tr>
@@ -3336,6 +3355,13 @@ export default function AdminDashboard({ onLogout }) {
                           <td>{employee.joiningDate ? new Date(employee.joiningDate).toLocaleDateString() : "N/A"}</td>
                           <td>{employee.designation || "N/A"}</td>
                           <td>{employee.department || "N/A"}</td>
+                          <td>
+                            {employee.adminAccess ? (
+                              <span className="employee-status-badge active">Admin</span>
+                            ) : (
+                              <span className="employee-status-badge disabled">Employee</span>
+                            )}
+                          </td>
                           <td className="employee-description-cell">{employee.description || "N/A"}</td>
                           <td>
                             {employee.updatedAt ? new Date(employee.updatedAt).toLocaleString() : "N/A"}

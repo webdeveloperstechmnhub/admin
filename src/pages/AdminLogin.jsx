@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import './AdminDashboard.css';
 
 export default function AdminLogin({ onLogin }) {
-  const [email, setEmail] = useState('');
+  const [empId, setEmpId] = useState('');
   const [password, setPassword] = useState('');
   const [operatorName, setOperatorName] = useState('');
   const [loading, setLoading] = useState(false);
@@ -15,7 +15,7 @@ export default function AdminLogin({ onLogin }) {
       const res = await fetch(`${import.meta.env.VITE_API_URL}/admin/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, operatorName })
+        body: JSON.stringify({ empId, password, operatorName })
       });
 
       const data = await res.json();
@@ -40,10 +40,21 @@ export default function AdminLogin({ onLogin }) {
         <div className="login-header">
           <div className="brand-badge">TechMNHub</div>
           <h2>Admin Portal</h2>
-          <p>Sign in to manage TechMNHub</p>
+          <p>Sign in with your Employee ID to manage TechMNHub</p>
         </div>
 
         <form onSubmit={handleSubmit} className="login-form">
+          <div className="input-group">
+            <label>Employee ID</label>
+            <input
+              type="text"
+              placeholder="EMP-001"
+              value={empId}
+              onChange={(e) => setEmpId(e.target.value)}
+              required
+            />
+          </div>
+
           <div className="input-group">
             <label>Operator Name</label>
             <input
@@ -51,17 +62,6 @@ export default function AdminLogin({ onLogin }) {
               placeholder="Your Name (e.g. John Doe)"
               value={operatorName}
               onChange={(e) => setOperatorName(e.target.value)}
-              required
-            />
-          </div>
-
-          <div className="input-group">
-            <label>Email Address</label>
-            <input
-              type="email"
-              placeholder="admin@zonex.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
               required
             />
           </div>
@@ -83,7 +83,7 @@ export default function AdminLogin({ onLogin }) {
         </form>
 
         <div className="demo-creds">
-          <p>Demo credentials (from .env)</p>
+          <p>Use the Employee ID and password issued from employee provisioning.</p>
         </div>
       </div>
     </div>
