@@ -40,15 +40,15 @@ export default function AdminLogin({ onLogin }) {
         <div className="login-header">
           <div className="brand-badge">TechMNHub</div>
           <h2>Admin Portal</h2>
-          <p>Sign in with your Employee ID to manage TechMNHub</p>
+          <p>Sign in with your USER ID to manage TechMNHub</p>
         </div>
 
         <form onSubmit={handleSubmit} className="login-form">
           <div className="input-group">
-            <label>Employee ID</label>
+            <label>USER ID</label>
             <input
               type="text"
-              placeholder="EMP-001"
+              placeholder="USR-001"
               value={empId}
               onChange={(e) => setEmpId(e.target.value)}
               required
@@ -83,7 +83,7 @@ export default function AdminLogin({ onLogin }) {
         </form>
 
         <div className="demo-creds">
-          <p>Use the Employee ID and password issued from employee provisioning.</p>
+          <p>Use the USER ID and password issued from admin provisioning.</p>
         </div>
       </div>
     </div>
