@@ -518,12 +518,14 @@ export default function AdminDashboard({ onLogout }) {
       const data = await parseResponseData(res);
       if (handleUnauthorizedResponse(res)) return;
       if (res.ok) {
-        setUsers(data);
+        setUsers(Array.isArray(data) ? data : Array.isArray(data?.users) ? data.users : []);
       } else {
+        setUsers([]);
         showNotice("error", data.msg || "Failed to load participants.");
       }
     } catch (err) {
       console.error(err);
+      setUsers([]);
       showNotice("error", "Failed to load participants.");
     } finally {
       setLoading(false);
@@ -539,12 +541,14 @@ export default function AdminDashboard({ onLogout }) {
       const data = await parseResponseData(res);
       if (handleUnauthorizedResponse(res)) return;
       if (res.ok) {
-        setStats(data);
+        setStats(data && typeof data === "object" ? data : null);
       } else {
+        setStats(null);
         showNotice("error", data.msg || "Failed to load dashboard stats.");
       }
     } catch (err) {
       console.error(err);
+      setStats(null);
       showNotice("error", "Failed to load dashboard stats.");
     }
   };
@@ -1778,14 +1782,16 @@ export default function AdminDashboard({ onLogout }) {
 
   // Compute total revenue from users list
   const totalRevenue = useMemo(() => {
-    return users
+    const list = Array.isArray(users) ? users : [];
+    return list
       .filter((u) => u.paymentStatus === "paid")
       .reduce((sum, u) => sum + (u.amountPaid || 0), 0);
   }, [users]);
 
   // Filter & search logic
   const filteredUsers = useMemo(() => {
-    return users.filter((user) => {
+    const list = Array.isArray(users) ? users : [];
+    return list.filter((user) => {
       const matchesSearch =
         user.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -1909,11 +1915,13 @@ export default function AdminDashboard({ onLogout }) {
 
   // Categories for filter
   const categories = useMemo(() => {
-    return [...new Set(users.map((u) => u.category).filter(Boolean))];
+    const list = Array.isArray(users) ? users : [];
+    return [...new Set(list.map((u) => u.category).filter(Boolean))];
   }, [users]);
 
   const eventOptions = useMemo(() => {
-    const userEvents = users.map((u) => u.eventShortName || "").filter(Boolean);
+    const list = Array.isArray(users) ? users : [];
+    const userEvents = list.map((u) => u.eventShortName || "").filter(Boolean);
     const createdEvents = (Array.isArray(events) ? events : []).map((e) => e.shortName).filter(Boolean);
     return [...new Set([...userEvents, ...createdEvents])];
   }, [users, events]);
@@ -1921,7 +1929,8 @@ export default function AdminDashboard({ onLogout }) {
   const eventList = useMemo(() => (Array.isArray(events) ? events : []), [events]);
 
   const studentSignupCounts = useMemo(() => {
-    return studentSignups.reduce(
+    const list = Array.isArray(studentSignups) ? studentSignups : [];
+    return list.reduce(
       (accumulator, signup) => {
         const status = String(signup?.status || "pending").toLowerCase();
         accumulator.total += 1;
@@ -1936,8 +1945,9 @@ export default function AdminDashboard({ onLogout }) {
 
   const filteredStudentSignups = useMemo(() => {
     const search = studentSignupSearch.trim().toLowerCase();
+    const list = Array.isArray(studentSignups) ? studentSignups : [];
 
-    return studentSignups.filter((signup) => {
+    return list.filter((signup) => {
       const status = String(signup?.status || "pending").toLowerCase();
       const matchesStatus = studentSignupStatus === "all" ? true : status === studentSignupStatus;
       if (!matchesStatus) return false;
@@ -1951,11 +1961,12 @@ export default function AdminDashboard({ onLogout }) {
   }, [studentSignups, studentSignupSearch, studentSignupStatus]);
 
   const filteredEmployees = useMemo(() => {
-    return employees;
+    return Array.isArray(employees) ? employees : [];
   }, [employees]);
 
   const checkedInUsers = useMemo(() => {
-    return users
+    const list = Array.isArray(users) ? users : [];
+    return list
       .filter((u) => u.checkedIn)
       .sort((a, b) => new Date(b.checkInTime || 0) - new Date(a.checkInTime || 0))
       .slice(0, 10);

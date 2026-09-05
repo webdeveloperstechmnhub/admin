@@ -31,7 +31,7 @@ const sharedMotion = {
   transition: hoverTransition,
 }
 
-const MotionLink = motion(Link)
+const MotionLink = motion.create(Link)
 const GoBackButton = ({ to, onClick, label = 'Back', className = '' }) => {
   const content = (
     <>
